@@ -1,0 +1,78 @@
+// E&C Master Portal — the thin layer above the four operational systems.
+// Read-only toward those systems: this database holds portal accounts, the
+// registry of linked systems, and health history. Master-data mappings and the
+// cost ledger arrive in later phases (M4/M5).
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Portal accounts — directors / GM / IT admin. Separate from every system's
+// own user store; a portal login never grants access to a linked system.
+model PortalUser {
+  id           String     @id @default(uuid())
+  username     String     @unique
+  name         String
+  passwordHash String
+  role         String     // "MASTER_ADMIN" | "DIRECTOR" | "VIEWER"
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  auditLogs    AuditLog[]
+}
+
+// The registry of linked systems. baseUrl + healthPath are polled for status;
+// summaryPath + tokenEnv drive the KPI reads added in M2.
+model System {
+  id          String         @id @default(uuid())
+  key         String         @unique // "fuel" | "mainstores" | "workshop" | "oilbook"
+  name        String
+  description String
+  icon        String         @default("box")
+  baseUrl     String         // e.g. http://localhost:3300
+  healthPath  String         @default("/api/health")
+  summaryPath String         @default("/api/portal/summary")
+  tokenEnv    String?        // name of the env var holding this system's portal token
+  openUrl     String         // where the tile's "Open system" link points (its own login)
+  sortOrder   Int            @default(0)
+  enabled     Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  samples     StatusSample[]
+
+  @@index([sortOrder])
+}
+
+// One row per health poll — the tile's up/down dot and uptime strip read this.
+model StatusSample {
+  id        String   @id @default(uuid())
+  systemId  String
+  system    System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  at        DateTime @default(now())
+  ok        Boolean
+  latencyMs Int?
+  detail    String?
+
+  @@index([systemId, at])
+}
+
+// Portal-side audit trail (logins, registry/mapping edits). The portal has no
+// write path into the four systems, so this only records portal actions.
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String?
+  actor     PortalUser? @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  summary   String
+  createdAt DateTime    @default(now())
+
+  @@index([createdAt])
+}

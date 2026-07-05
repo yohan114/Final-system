@@ -1,0 +1,184 @@
+// E&C Master Portal — the thin layer above the four operational systems.
+// Read-only toward those systems: this database holds portal accounts, the
+// registry of linked systems, and health history. Master-data mappings and the
+// cost ledger arrive in later phases (M4/M5).
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Portal accounts — directors / GM / IT admin. Separate from every system's
+// own user store; a portal login never grants access to a linked system.
+model PortalUser {
+  id           String     @id @default(uuid())
+  username     String     @unique
+  name         String
+  passwordHash String
+  role         String     // "MASTER_ADMIN" | "DIRECTOR" | "VIEWER"
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  auditLogs    AuditLog[]
+}
+
+// The registry of linked systems. baseUrl + healthPath are polled for status;
+// summaryPath + tokenEnv drive the KPI reads added in M2.
+model System {
+  id          String         @id @default(uuid())
+  key         String         @unique // "fuel" | "mainstores" | "workshop" | "oilbook"
+  name        String
+  description String
+  icon        String         @default("box")
+  baseUrl     String         // e.g. http://localhost:3300
+  healthPath  String         @default("/api/health")
+  summaryPath String         @default("/api/portal/summary")
+  tokenEnv    String?        // name of the env var holding this system's portal token
+  openUrl     String         // where the tile's "Open system" link points (its own login)
+  sortOrder   Int            @default(0)
+  enabled     Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  samples     StatusSample[]
+  snapshots   KpiSnapshot[]
+
+  @@index([sortOrder])
+}
+
+// One row per health poll — the tile's up/down dot and uptime strip read this.
+model StatusSample {
+  id        String   @id @default(uuid())
+  systemId  String
+  system    System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  at        DateTime @default(now())
+  ok        Boolean
+  latencyMs Int?
+  detail    String?
+
+  @@index([systemId, at])
+}
+
+// One row per successful /api/portal/summary read. The tiles render the latest
+// successful snapshot (last-known-good), so KPIs still show when a system is
+// briefly down. payload is the JSON kpis array [{ label, value, tone }].
+model KpiSnapshot {
+  id       String   @id @default(uuid())
+  systemId String
+  system   System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  at       DateTime @default(now())
+  payload  String
+
+  @@index([systemId, at])
+}
+
+// ── Master data spine (M4) ───────────────────────────────────────────────────
+// Canonical machine — one physical machine across all systems, identified by
+// its E&C code. Per-system presence is the SystemEntity rows linked to it.
+model MachineMap {
+  id            String         @id @default(uuid())
+  canonicalCode String         @unique // normalized E&C code
+  label         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  entities      SystemEntity[]
+  costEvents    CostEvent[]
+}
+
+// Canonical site/project, identified by a normalized name.
+model SiteMap {
+  id           String         @id @default(uuid())
+  canonicalKey String         @unique // normalized site name
+  label        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  entities     SystemEntity[]
+  costEvents   CostEvent[]
+}
+
+// The profit engine's ledger (M5). One row per cost/income event pulled from a
+// system's /api/portal/costs, idempotent on (systemKey, sourceRef), linked to
+// the canonical machine/site so profit = income − cost rolls up per site and
+// per machine. Money in LKR cents. The portal never writes back to the systems.
+model CostEvent {
+  id          String      @id @default(uuid())
+  systemKey   String
+  sourceRef   String // unique within a system → idempotent re-ingest
+  kind        String // "cost" | "income"
+  category    String // fuel | parts | labour | oil | income
+  month       String // "YYYY-MM"
+  occurredAt  DateTime
+  machineCode String? // raw code as given by the system
+  siteRef     String? // raw site name as given by the system
+  qty         Float?
+  amountCents Int
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteId      String?
+  site        SiteMap?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+
+  @@unique([systemKey, sourceRef])
+  @@index([month])
+  @@index([month, siteId])
+  @@index([month, machineId])
+}
+
+// Staging: one row per (system, kind, localId) — every machine/site pulled from
+// every system, linked to a canonical when matched. Unmatched = machineId/siteId
+// null, surfaced in the mapping workbench.
+model SystemEntity {
+  id        String      @id @default(uuid())
+  systemKey String // fuel | mainstores | workshop | oilbook
+  kind      String // "machine" | "site"
+  localId   String // the system's local identifier
+  code      String? // E&C code / registration / name as given by the system
+  label     String?
+  extra     String? // JSON of extra fields (registration, serialNo, status…)
+  matchType String? // "auto-code" | "auto-name" | "manual" | null (unmatched)
+  machineId String?
+  machine   MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteId    String?
+  site      SiteMap?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  syncedAt  DateTime    @default(now())
+
+  @@unique([systemKey, kind, localId])
+  @@index([kind, machineId])
+  @@index([kind, siteId])
+  @@index([systemKey, kind])
+}
+
+// Every alert-digest email the portal composed, with its delivery outcome.
+// status is "simulated" when no SMTP is configured (the email is recorded but
+// not sent), else "sent" / "failed". Mirrors the systems' outbox pattern.
+model Outbox {
+  id        String   @id @default(uuid())
+  kind      String   @default("alert-digest")
+  to        String
+  subject   String
+  body      String
+  status    String // "simulated" | "sent" | "failed"
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Portal-side audit trail (logins, registry/mapping edits). The portal has no
+// write path into the four systems, so this only records portal actions.
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String?
+  actor     PortalUser? @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  summary   String
+  createdAt DateTime    @default(now())
+
+  @@index([createdAt])
+}

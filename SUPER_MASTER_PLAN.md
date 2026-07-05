@@ -346,7 +346,13 @@ archived once this merges):
    real data.*
 2. **M11 · Trust & safety net** — schedule `deploy/backup-all.*` off-machine
    plus one restore drill; set `SMTP_*` so the alert digest actually emails;
-   add backup-staleness alerts; work the master-data unmapped queue to zero.
+   work the master-data unmapped queue to zero. ✅ *Backup-staleness alerts
+   shipped:* every system reports its newest on-disk backup with its KPI
+   summary (app-dir-relative, so unified mode is safe); the portal warns at
+   48 h / goes critical at 7 days / flags "no backup", on /alerts and in the
+   digest. Verified live: a 3-day-old fixture raised the stale warning, a
+   missing backups dir raised "has no backup", fresh backups stayed quiet
+   (5/5 browser checks; legacy array snapshots parse untouched).
 3. **M12 · Depth (separate approvals)** — single sign-on across the systems;
    per-site allowed-vehicle fuel lists; portal PWA; battery warranty claims;
    store cost category once S3 issues carry an E&C code.

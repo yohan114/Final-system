@@ -77,9 +77,22 @@ app.get('/api/portal/summary', (req, res) => {
     "SELECT COUNT(*) n FROM transactions WHERE voided=0 AND kind='issue' AND txn_date >= date('now','start of month')"
   ).get().n;
   const pendingReqs = db.prepare("SELECT COUNT(*) n FROM requisitions WHERE status='pending'").get().n;
+  // Newest daily VACUUM INTO snapshot in data/backups — the portal flags it when stale.
+  let lastBackupAt = null;
+  try {
+    const backupDir = path.join(ROOT, 'data', 'backups');
+    let latest = 0;
+    for (const f of fs.readdirSync(backupDir)) {
+      if (!f.endsWith('.db')) continue;
+      const m = fs.statSync(path.join(backupDir, f)).mtimeMs;
+      if (m > latest) latest = m;
+    }
+    if (latest) lastBackupAt = new Date(latest).toISOString();
+  } catch (_) {}
   res.json({
     system: 'oilbook',
     generatedAt: new Date().toISOString(),
+    lastBackupAt,
     kpis: [
       { label: 'Issued this month', value: issuedThisMonth, tone: 'neutral', href: '/ledger' },
       { label: 'Below reorder', value: belowReorder, tone: belowReorder > 0 ? 'warn' : 'good', href: '/' },

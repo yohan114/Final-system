@@ -180,8 +180,11 @@ trusting it.
 
 The portal's **/alerts** page rolls the health-poll history into a prioritised
 feed: a system that fails its latest health check appears as a warning and
-escalates to **critical** after ~5 minutes with no successful check. (Backup-
-staleness alerts arrive in M7, once each system reports its last backup time.)
+escalates to **critical** after ~5 minutes with no successful check. Each
+system also reports its newest on-disk backup with its KPI summary; a system
+with **no backup** or a backup older than **48 hours** raises a warning, and
+older than **7 days** goes critical — so a silently broken backup job can't
+hide. The alert email digest carries these too.
 
 ## 8. First-run checklist
 

@@ -11,6 +11,10 @@ export interface Kpi {
   label: string;
   value: string | number;
   tone?: "good" | "warn" | "bad" | "neutral";
+  // Optional path within the owning system that this KPI drills into. The
+  // portal composes openUrl + href so the link opens in that system (where the
+  // user signs in). Absent/empty → the whole system links to its app root.
+  href?: string;
 }
 
 // Read one system's KPI summary. Server-to-server with the per-system token

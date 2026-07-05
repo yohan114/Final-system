@@ -108,6 +108,7 @@ Set in `Final-system/.env`:
 | Portal auth | `PORTAL_AUTH_SECRET`, `SEED_PORTAL_ADMIN_PASSWORD` (first run) |
 | System auth | `FUEL_AUTH_SECRET`, `MAINSTORES_AUTH_SECRET` (distinct long random values) |
 | Portal ↔ system tokens | `FUEL_PORTAL_TOKEN`, `MAINSTORES_PORTAL_TOKEN`, `WORKSHOP_PORTAL_TOKEN`, `OILBOOK_PORTAL_TOKEN` — in unified mode each system reads the **same** variable the portal uses, so one value per system configures both sides |
+| Single sign-on | `FUEL_SSO_SECRET`, `MAINSTORES_SSO_SECRET`, `WORKSHOP_SSO_SECRET`, `OILBOOK_SSO_SECRET` — sign in once at the portal and "Open system" arrives already signed in (matched by username). Same one-variable-per-pair pattern; unset = that system's tile links plainly and its own login is used |
 | Health polling (unified) | `FUEL_BASE_URL=http://127.0.0.1:4400/__sys/fuel`, `MAINSTORES_BASE_URL=http://127.0.0.1:4400/__sys/mainstores`, `WORKSHOP_BASE_URL=http://127.0.0.1:4400/__sys/workshop`, `OILBOOK_BASE_URL=http://127.0.0.1:4400/__sys/oilbook` (then re-run the portal seed) |
 | Cron | `CRON_SECRET` — one value serves both the portal digest and the Fuel cron endpoints in unified mode |
 | Optional | `SMTP_*` (alert digest email), `BUSINESS_TZ=Asia/Colombo`, `COOKIE_SECURE=true` |

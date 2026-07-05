@@ -119,6 +119,42 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
+// --- Single sign-on from the E&C Master Portal ------------------------------
+// The portal signs a short-lived one-time token (base64url(payload).hmac,
+// shared secret WORKSHOP_SSO_SECRET); we verify it and mint this system's own
+// session for the matching local user. Failure lands on the normal login page.
+const seenSsoJti = new Map(); // jti -> expiry (ms); in-memory single-use guard
+function verifySsoToken(token) {
+    const crypto = require('crypto');
+    const secret = process.env.WORKSHOP_SSO_SECRET;
+    if (!secret || !token) return null;
+    const dot = token.indexOf('.');
+    if (dot <= 0) return null;
+    const payloadB64 = token.slice(0, dot);
+    const sig = token.slice(dot + 1);
+    const expected = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    let payload;
+    try { payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString()); } catch (_) { return null; }
+    if (payload.sys !== 'workshop') return null;
+    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (typeof payload.jti !== 'string' || !payload.jti || seenSsoJti.has(payload.jti)) return null;
+    if (typeof payload.u !== 'string' || !payload.u) return null;
+    seenSsoJti.set(payload.jti, payload.exp * 1000);
+    for (const [jti, expiry] of seenSsoJti) if (expiry < Date.now()) seenSsoJti.delete(jti);
+    return { username: payload.u };
+}
+
+app.get('/sso', (req, res) => {
+    const verified = verifySsoToken(String(req.query.token || ''));
+    if (!verified) return res.redirect('/');
+    const user = dbApi.get('SELECT * FROM users WHERE LOWER(username)=? AND active=1', [verified.username.toLowerCase()]);
+    if (!user) return res.redirect('/');
+    auth.createSession(res, user.id);
+    res.redirect('/item_tracker.html');
+});
+
 app.get('/api/me', (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated.' });
     res.json({ user: auth.publicUser(req.user) });

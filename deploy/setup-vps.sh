@@ -108,6 +108,12 @@ MAINSTORES_PORTAL_TOKEN="$(gen)"
 WORKSHOP_PORTAL_TOKEN="$(gen)"
 OILBOOK_PORTAL_TOKEN="$(gen)"
 
+# Single sign-on: portal login opens each system already signed in
+FUEL_SSO_SECRET="$(gen)"
+MAINSTORES_SSO_SECRET="$(gen)"
+WORKSHOP_SSO_SECRET="$(gen)"
+OILBOOK_SSO_SECRET="$(gen)"
+
 # System auth secrets
 FUEL_AUTH_SECRET="$(gen)"
 MAINSTORES_AUTH_SECRET="$(gen)"

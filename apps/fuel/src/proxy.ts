@@ -19,9 +19,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip auth checks for login page and static assets
+  // Skip auth checks for login page, the portal SSO hand-off (the /sso route
+  // verifies its own signed token), and static assets
   if (
     pathname === "/login" ||
+    pathname === "/sso" ||
     pathname.startsWith("/_next") ||
     pathname.includes("favicon.ico") ||
     pathname.startsWith("/public")

@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api, getToken, setToken } from './api.js';
 
+// Portal single sign-on hand-off: the server redirects to /#sso=<token> after
+// verifying a portal launch. Adopt it as our bearer token before the auth
+// provider first loads, then strip it from the URL (and from history).
+if (typeof window !== 'undefined' && window.location.hash.startsWith('#sso=')) {
+  setToken(decodeURIComponent(window.location.hash.slice(5)));
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
 const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {

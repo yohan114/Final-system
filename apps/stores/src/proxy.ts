@@ -5,9 +5,11 @@ export function proxy(request: NextRequest) {
   const session = request.cookies.get("mainstores_session")?.value;
   const { pathname } = request.nextUrl;
 
-  // Bypass authentication check for login, assets, static uploads, and favicon
+  // Bypass authentication check for login, the portal SSO hand-off (the /sso
+  // route verifies its own signed token), assets, static uploads, and favicon
   if (
     pathname.startsWith("/login") ||
+    pathname === "/sso" ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/uploads") ||
     pathname === "/favicon.ico"

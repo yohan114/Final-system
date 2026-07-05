@@ -353,9 +353,20 @@ archived once this merges):
    digest. Verified live: a 3-day-old fixture raised the stale warning, a
    missing backups dir raised "has no backup", fresh backups stayed quiet
    (5/5 browser checks; legacy array snapshots parse untouched).
-3. **M12 · Depth (separate approvals)** — single sign-on across the systems;
-   per-site allowed-vehicle fuel lists; portal PWA; battery warranty claims;
-   store cost category once S3 issues carry an E&C code.
+3. **M12 · Depth (separate approvals)** — per-site allowed-vehicle fuel
+   lists; portal PWA; battery warranty claims; store cost category once S3
+   issues carry an E&C code. ✅ *Single sign-on shipped:* sign in once at the
+   portal and "Open system" arrives already signed in. The portal's
+   `/launch/<key>` mints a 60-second single-use HMAC token (per-system
+   `<SYS>_SSO_SECRET`, both sides read the same variable in unified mode);
+   each system's `/sso` endpoint verifies it (timing-safe, expiry, one-time
+   jti, audience check) and mints its own native session for the matching
+   local username — S1/S2 set their cookies, S3 its DB session, S4 hands the
+   bearer token to the SPA via a stripped `#sso=` hash. Local accounts, roles
+   and logins are untouched; unset secret = SSO off for that system. Verified
+   end-to-end in a real browser (13/13): all four systems open signed-in from
+   one portal login, plus no-session, tampered-token, expired, replayed and
+   wrong-audience tokens all rejected to the login page.
 
 ---
 

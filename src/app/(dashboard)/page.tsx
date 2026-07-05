@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { pollAllSystems } from "@/lib/systems";
 import SystemTiles, { TileSystem, TileState } from "@/components/SystemTiles";
+import { ssoSecretFor } from "@/lib/sso";
 
 // The launcher polls every enabled system's health (and KPI summary) on render
 // so the first paint already shows status + numbers, then the client component
@@ -21,6 +22,9 @@ export default async function LauncherPage() {
       description: r.system.description,
       icon: r.system.icon,
       openUrl: r.system.openUrl,
+      // With an SSO secret configured, open through /launch/<key> so the user
+      // arrives already signed in; otherwise plain link (old behaviour).
+      launchUrl: ssoSecretFor(r.system.key) ? `/launch/${r.system.key}` : r.system.openUrl,
     }));
     for (const r of results) {
       initial[r.system.key] = {

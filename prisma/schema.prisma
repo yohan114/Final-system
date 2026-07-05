@@ -76,6 +76,52 @@ model KpiSnapshot {
   @@index([systemId, at])
 }
 
+// ── Master data spine (M4) ───────────────────────────────────────────────────
+// Canonical machine — one physical machine across all systems, identified by
+// its E&C code. Per-system presence is the SystemEntity rows linked to it.
+model MachineMap {
+  id            String         @id @default(uuid())
+  canonicalCode String         @unique // normalized E&C code
+  label         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  entities      SystemEntity[]
+}
+
+// Canonical site/project, identified by a normalized name.
+model SiteMap {
+  id           String         @id @default(uuid())
+  canonicalKey String         @unique // normalized site name
+  label        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  entities     SystemEntity[]
+}
+
+// Staging: one row per (system, kind, localId) — every machine/site pulled from
+// every system, linked to a canonical when matched. Unmatched = machineId/siteId
+// null, surfaced in the mapping workbench.
+model SystemEntity {
+  id        String      @id @default(uuid())
+  systemKey String // fuel | mainstores | workshop | oilbook
+  kind      String // "machine" | "site"
+  localId   String // the system's local identifier
+  code      String? // E&C code / registration / name as given by the system
+  label     String?
+  extra     String? // JSON of extra fields (registration, serialNo, status…)
+  matchType String? // "auto-code" | "auto-name" | "manual" | null (unmatched)
+  machineId String?
+  machine   MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteId    String?
+  site      SiteMap?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  syncedAt  DateTime    @default(now())
+
+  @@unique([systemKey, kind, localId])
+  @@index([kind, machineId])
+  @@index([kind, siteId])
+  @@index([systemKey, kind])
+}
+
 // Portal-side audit trail (logins, registry/mapping edits). The portal has no
 // write path into the four systems, so this only records portal actions.
 model AuditLog {

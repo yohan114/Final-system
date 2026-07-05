@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { logoutAction } from "@/app/actions/auth";
-import { LayoutGrid, BarChart3, LogOut } from "lucide-react";
+import { LayoutGrid, BarChart3, LogOut, Cpu, MapPin } from "lucide-react";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -23,6 +23,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
               </Link>
               <Link href="/overview" className="px-3 py-1.5 rounded-lg text-muted hover:text-foreground hover:bg-white/5 flex items-center gap-1.5">
                 <BarChart3 className="w-4 h-4" /> Overview
+              </Link>
+              <Link href="/machines" className="px-3 py-1.5 rounded-lg text-muted hover:text-foreground hover:bg-white/5 flex items-center gap-1.5">
+                <Cpu className="w-4 h-4" /> Machines
+              </Link>
+              <Link href="/sites" className="px-3 py-1.5 rounded-lg text-muted hover:text-foreground hover:bg-white/5 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" /> Sites
               </Link>
             </nav>
           </div>

@@ -1,0 +1,78 @@
+# Monorepo CI — one repo, all systems. Each job runs inside its app folder;
+# these were the per-repo workflows before the apps moved into apps/*.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  portal-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+
+  fuel-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/fuel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/fuel/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      # Informational until the pre-existing no-explicit-any backlog is cleared
+      # (175 legacy errors); typecheck and tests below are the enforced gates.
+      - run: npm run lint
+        continue-on-error: true
+      - run: npm run typecheck
+      - run: npm test
+
+  workshop-build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/workshop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/workshop/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: Build client
+        run: npm run build:client
+      # The compiled js/ bundle is committed; fail if it drifts from src/client/*.ts
+      # so a .ts edit can never ship without its rebuild.
+      - name: Verify committed js/ is in sync with source
+        run: |
+          if ! git diff --exit-code -- js/; then
+            echo "::error::js/ is out of date — run 'npm run build:client' and commit the result."
+            exit 1
+          fi
+      - name: Unit tests (node:test)
+        run: npm run test:unit
+      # test_api boots the server against a disposable copy of the database, so
+      # build one from the committed tracker_data.json first.
+      - name: Build database fixture
+        run: npm run migrate
+      - name: API integration tests
+        run: npm run test:api

@@ -1,0 +1,28 @@
+import { PrismaClient } from "@prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+const adapter = new PrismaBetterSqlite3({
+  // MAINSTORES_DATABASE_URL first so this app keeps its own DB when co-hosted
+  // in the unified E&C server, where a bare DATABASE_URL would be ambiguous.
+  url: process.env.MAINSTORES_DATABASE_URL || process.env.DATABASE_URL || "file:./dev.db",
+});
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  });
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// WAL mode initialization
+prisma.$executeRawUnsafe("PRAGMA journal_mode=WAL;")
+  .then(() => {
+    // WAL mode successfully enabled
+  })
+  .catch((err) => {
+    console.error("Failed to enable WAL mode on SQLite:", err);
+  });

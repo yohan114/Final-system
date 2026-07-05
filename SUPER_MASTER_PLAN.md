@@ -2,7 +2,7 @@
 
 **Edward & Christie (Pvt) Ltd — one front door over four systems: ⛽ Fuel · 🏗️ Main Stores · 🔧 Workshop & Stores · 🛢️ Oil Stock Book**
 
-_One portal that links every system the company runs — **separate logins, separate dashboards** for each system, plus a master overview that no single system can show today._
+_One portal that links every system the company runs — **separate logins, separate dashboards** for each system, plus the two things no single system can show today: the whole company at a glance, and **profit per site and per machine** (income billed vs true cost)._
 
 - Home of the Super Master Portal: `yohan114/Final-system` (this repository)
 - Linked systems: `yohan114/Fuel-System-V2` · `yohan114/Main-stros-system` · `yohan114/Store-Database` · `yohan114/oil-stock-book`
@@ -20,10 +20,20 @@ The **Super Master System** adds a fifth, thin application — the **E&C Master 
 1. **One address for everything.** Staff open the portal, see a tile for each system, and click through to the system they work in. **Each system keeps its own login page, its own accounts, and its own dashboard — exactly as they are today.** The portal never shares sessions between systems.
 2. **Live status at a glance.** The portal shows whether each system is up, and (phase M2+) headline numbers pulled from each one — fuel spend this month, pending MRNs, open job cards, low oil stock.
 3. **A master overview no system can produce alone.** Because the same machines and sites appear in all four systems under different identifiers, the portal builds the **master data spine** (one canonical machine list, one canonical site list, with mappings) and then answers the question the directors actually ask: *"what did this machine / this site really cost this month — fuel + parts + labour + oil together?"*
+4. **Profit, not just cost.** The Fuel system already produces the income side — monthly rental + fuel invoices per machine and site. Once the spine links each machine's costs across the four systems, the portal computes what no spreadsheet ever managed reliably: **Profit = income billed − true cost** (fuel + parts + labour + oil + batteries), per site, per machine, per month — with the fuel-margin and repair-burden split visible (§4.4).
 
 The portal is **read-only toward the four systems**. It links, monitors and aggregates; it never edits their data. All entry and approval work stays inside each system, under that system's own roles.
 
 > **Guiding principle (per the owner's brief): link everything into one system, but keep separate logins and separate dashboards.** The design below takes that literally: four sovereign systems, one master portal above them.
+
+**Design principles applied throughout** (they already hold inside the four systems; the portal extends them across systems):
+
+1. **Event-driven.** Every cost-bearing action — a fuel issue, an oil issue, a GRN/MRN line, a job-card labour line, a battery change — is already a time-stamped event with who / what / where / quantity / price in its home system. The portal never invents numbers; it aggregates those events.
+2. **Cost flow, not stock count.** Track where value went (main store → site → machine → job card → bill), not just what is left on the shelf — that is what makes per-site and per-machine P/L possible.
+3. **One system of record per domain.** Fuel events live in S1, machine movements in S2, parts & labour in S3, lubricants in S4 — and the portal's mapping spine is the single source of truth for *identity* (which machine is which, which site is which). No fact is mastered in two places — which is exactly why decisions Q2–Q4 must be answered.
+4. **Cost and billing stay separate.** Costs come from actual purchase/issue prices and job cards; income comes from contract rate cards (S1's `RentalRate`) and invoices. The two meet only in the profit report — never in one table.
+5. **Corrections, never overwrites.** S1 already enforces admin-approved corrections with signed documents; the portal inherits the rule — its mapping edits and snapshots are audit-logged, and it has no write path into the four systems at all.
+6. **Machine-picked prices.** The cost on every issue is chosen by the system (price snapshot at issue in S1; GRN-derived prices in S3/S4), never typed from memory — the precondition for a bill anyone can trust.
 
 ---
 
@@ -69,6 +79,7 @@ flowchart TB
     LP["Portal login<br/>(its own users: directors/admins)"]
     TILES["Launcher — 4 system tiles<br/>+ live up/down status"]
     EXEC["Executive overview<br/>(cross-system KPIs)"]
+    PROF["P/L engine<br/>Profit = income (S1 bills) −<br/>cost (fuel+parts+labour+oil+battery)"]
     SPINE["Master data spine<br/>(machine ⇄ machine, site ⇄ site mappings)"]
   end
 
@@ -99,8 +110,9 @@ Each of the four systems gets two small, token-authenticated, **read-only** endp
 
 | Endpoint | Auth | Returns | Exists today? |
 |---|---|---|---|
-| `GET /api/health` | none | `{ ok, system, version, time }` | ✅ S3, ✅ S4 · ○ add to S1, S2 |
-| `GET /api/portal/summary` | `x-portal-token` header | Compact JSON KPI snapshot (see below) | ○ add to all four |
+| `GET /api/health` | none | `{ ok, system, version, time }` | ✅ S3, ✅ S4 · ○ add to S1, S2 (M1) |
+| `GET /api/portal/summary` | `x-portal-token` header | Compact JSON KPI snapshot (see below) | ○ add to all four (M2) |
+| `GET /api/portal/costs?month=YYYY-MM` | `x-portal-token` header | Month-scoped cost events per machine/site — `{ occurredAt, machineRef, siteRef, category, qty, amountCents, sourceRef }` — feeds the P/L ledger (§4.4) | ○ add to S1, S3, S4 (M5) |
 
 Per-system summary payloads (all figures the systems already compute for their own dashboards):
 
@@ -132,6 +144,9 @@ StatusSample    — systemId, at, ok, latencyMs            (health history → u
 KpiSnapshot     — systemId, at, payload JSON             (last-known-good summary; portal still renders when a system is down)
 MachineMap      — canonicalCode (E&C code) ⇄ s1AssetId? · s2MachineCode? · s4EcCode? · s3NamePatterns[]
 SiteMap         — canonicalSite ⇄ s1ProjectCode? · s2SiteName? · s4ProjectId? · s3NamePatterns[]
+CostEvent       — systemKey, sourceRef (unique per system → idempotent re-ingest), occurredAt,
+                  machineCode?, siteKey?, category (fuel|parts|labour|oil|battery|store|external),
+                  qty?, amountCents, mapped flag                    (the normalized cost ledger, §4.4)
 AuditLog        — portal actor/action trail (logins, mapping edits, token changes)
 ```
 
@@ -140,11 +155,38 @@ Portal screens:
 - `/` — **Launcher**: four tiles (name, icon, up/down dot, 24-h uptime strip, 3–4 headline KPIs, "Open system →" link). Public or portal-login-gated — owner's choice (§8 Q5).
 - `/login` — portal sign-in (portal accounts only).
 - `/overview` — **Executive overview** (portal login): company-wide KPI wall — fuel spend, stores spend, workshop job cost, oil stock value, receivables, alerts rollup — each figure linking out to the owning system's own screen for drill-down.
+- `/profit` — **P/L board** (portal login, from M5): per-site and per-machine monthly profit — income from S1 invoices vs cost by category (fuel, parts, labour, oil, battery), fuel-margin and repair splits, an explicit "unattributed" bucket for unmapped events, month selector, CSV export.
 - `/machines` + `/machines/[code]` — the **master machine register**: one row per physical machine (canonical E&C code) with per-system presence and, once mapped, the combined monthly cost view (fuel from S1 + parts/labour from S3 + oil from S4 + movement status from S2).
 - `/sites` — same idea per site/project.
 - `/admin/systems`, `/admin/mappings`, `/admin/users`, `/admin/audit` — registry, mapping workbench (with fuzzy-match suggestions for S3's free-text names), portal users, audit.
 
-### 4.4 Routing & addressing — recommended: one subdomain per system
+### 4.4 Cost & profit model — from events to P/L
+
+The four systems already record every cost-bearing event. The portal normalizes them into one read-only ledger and sets them against the income S1 already bills:
+
+```mermaid
+flowchart LR
+  subgraph Costs["COST events (actuals)"]
+    C1["S1 fuel issues<br/>(litres × price snapshot)"]
+    C2["S3 job cards<br/>(labour + parts + external)"]
+    C3["S4 oil/lube issues<br/>(qty × unit price)"]
+    C4["S4 battery changes"]
+    C5["S3 store issues to sites"]
+  end
+  SP["Master data spine<br/>(machine ⇄ machine, site ⇄ site)"]
+  subgraph Income["INCOME (contractual)"]
+    I1["S1 monthly invoices<br/>(rental + fuel + SSCL/VAT)"]
+  end
+  C1 & C2 & C3 & C4 & C5 --> SP --> PL2["P/L per site · per machine · per month<br/>Profit = Income − Cost"]
+  I1 --> PL2
+```
+
+- **Cost side (actuals):** `CostBill(site, month) = Σ fuel issued (at issue-price snapshot) + Σ oil/lubes issued + Σ store items issued + Σ job-card costs (labour + parts + external) + Σ battery replacements`. Every term is an **existing event** in S1/S3/S4, attributed to a machine and site through the spine — the portal computes, it never re-enters.
+- **Income side (contractual):** S1's issued invoices per machine and site (rental from `RentalRate` cards + fuel + taxes) — already immutable snapshots in S1.
+- **Profit:** `Profit(site, month) = Income(site, month) − CostBill(site, month)`, and the same per machine — with the split visible: fuel margin (fuel billed vs fuel cost), repair burden, oil burden. **Cost per km / per hour** falls out free wherever S1 meter readings exist for the machine.
+- **Honesty rules:** (a) a repair can appear both as an S3 job card and an S1 service record — the ledger tags provenance, and the P/L never sums both maintenance sources for one machine without the Q2/Q4 boundary declaring which is authoritative; (b) events that can't be attributed to a mapped machine/site land in a visible **"unattributed" bucket**, so the P/L always states its own coverage instead of silently under-counting; (c) all money stays in **LKR cents (integers)**, matching S1's convention.
+
+### 4.5 Routing & addressing — recommended: one subdomain per system
 
 Evidence in the code favors subdomains over path-prefixes, strongly:
 
@@ -176,13 +218,13 @@ The scan found live issues that become more dangerous the moment one front door 
 | G5 | S1+S2 | Cookie name collision: both set `session` at `path=/` | Rename S2's to `mainstores_session` (one-line change; S2 has no deployed users yet). Portal uses `portal_session`. Subdomains then make this belt-and-braces |
 | G6 | all | Default credentials: `admin/admin123` seeded in S2 (and **displayed on its login page**), S3, S4; S1 has a hardcoded fallback seed password; S3 approver accounts ship `changeme123` | Rotate every seeded account; remove the on-screen credentials in S2; set `SEED_*` envs on fresh installs |
 | G7 | S1 | `requireUser()` has a `TEST_ENV === "true"` bypass returning the admin user | Ensure it can never be set in production (guard on `NODE_ENV`) |
-| G8 | ops | All four SQLite DBs, all photo/document BLOBs **and all their backups** live on one disk of one Windows box; S2 has no backup at all | Off-machine backup (network share / USB rotation / cloud) as part of M5; add S2 backups |
+| G8 | ops | All four SQLite DBs, all photo/document BLOBs **and all their backups** live on one disk of one Windows box; S2 has no backup at all | Off-machine backup (network share / USB rotation / cloud) as part of M6; add S2 backups |
 
 ---
 
 ## 6. Port, process & environment map (single source of truth)
 
-| Port | Process | Start today | Target (M5) |
+| Port | Process | Start today | Target (M6) |
 |---|---|---|---|
 | 3000 | Oil Stock Book | `start_server.bat` | Supervised service |
 | 1111 | Main Stores Console | — (not yet deployed) | Supervised service |
@@ -197,10 +239,10 @@ Per-system env vars the portal work introduces: `PORTAL_TOKEN` (unique per syste
 
 ---
 
-## 7. Roadmap — six phases to hero
+## 7. Roadmap — seven phases to hero
 
 ### M0 · Decisions + security gate ⚠️ *(~1 day)*
-Answer the questions in §8; apply G1–G7 across the four repos (G8 lands in M5). Nothing else starts until the gate is closed.
+Answer the questions in §8; apply G1–G7 across the four repos (G8 lands in M6). Nothing else starts until the gate is closed.
 **Verify:** each fix exercised (e.g. `/api/reports/export/xlsx` returns 401 unauthenticated); default creds rotated.
 
 ### M1 · Portal MVP — one front door 🔜 *(~1–2 days)*
@@ -215,19 +257,25 @@ Add `GET /api/portal/summary` (x-portal-token) to all four systems, cloned from 
 `/overview` for portal accounts: company KPI wall (fuel spend, stores spend, job cost, oil stock value, receivables, alerts rollup), month selector, each figure deep-linking into the owning system. Clearly labelled per-source — **no cross-system sums yet** (that needs M4's spine, or it double-counts).
 **Verify:** every figure reconciles to its source system's screen for the same month.
 
-### M4 · Master data spine — the real prize ○ *(~2–3 days)*
+### M4 · Master data spine — the keystone ○ *(~2–3 days)*
 `MachineMap`/`SiteMap` + mapping workbench: auto-match S1 `Asset.code` ⇄ S4 `ec_code` (both E&C codes — expected high hit rate), assisted matching for S2 serial/plate codes and S3 free-text names (fuzzy suggestions, human confirms). Then `/machines/[code]`: **one machine, one page — fuel (S1) + parts & labour (S3) + oil (S4) + movement status (S2)**, and the honest combined monthly cost. Site equivalent. Unmapped-records report keeps pressure on data quality.
 **Verify:** pick 3 known machines; combined view matches manual totals from the four systems.
 
-### M5 · Operations hardening ○ *(~2 days)*
+### M5 · Cost ledger & profit engine — the real prize ○ *(~2–3 days)*
+Add `GET /api/portal/costs?month=` (x-portal-token) to S1, S3 and S4; the portal ingests through the spine into the idempotent `CostEvent` ledger; `/profit` board goes live: per-site and per-machine P/L — **income from S1 invoices vs cost by category** (fuel, parts, labour, oil, battery, store, external) with fuel-margin and repair splits, the visible "unattributed" bucket, and CSV export (§4.4).
+**Verify:** one **pilot site, one month, reconciled by hand** — the portal's P/L must match a manual calculation from the four systems to the rupee before any other site's numbers are trusted.
+
+### M6 · Operations hardening ○ *(~2 days)*
 Reverse proxy serves all five subdomains + TLS; process supervision for all five apps + portal; **off-machine backups** for all four DBs (fixes G8, adds S2 backups); written port/env map committed to this repo; portal alert when any system is down > 5 min or a backup is stale.
 **Verify:** reboot the box → everything returns without manual steps; restore drill from an off-machine backup copy.
 
-### M6 · Future (separate approvals) ○
+### M7 · Future (separate approvals) ○
 - **Single sign-on** — only if wanted later; the groundwork (aligned usernames, per-app secrets, subdomain cookies) is deliberately laid so SSO is an add-on, not a rewrite. Until then: separate logins, as specified.
 - **Stores boundary execution** (per Q2): keep S2 and S3 with the declared split, or fund a real migration.
 - **Oil-book merge into S1** (per Q3) — the merge SYSTEM_PLAN.md described, actually executed, if ever justified; the portal tile means there is no urgency.
 - **Battery register consolidation** (per Q4); alert email digest from the portal; portal PWA for phones.
+- **Site fuel discipline in S1** — per-site allowed-vehicle fuel lists and daily/weekly litre caps, enforced at fuel-request approval (closes the "unauthorized vehicle / runaway drawdown" gap at the source).
+- **Battery lifecycle depth in S4** — warranty period, expected-replacement-date alerts, and warranty-claim tracking on the existing photo register.
 
 ---
 
@@ -239,6 +287,7 @@ Reverse proxy serves all five subdomains + TLS; process supervision for all five
 - **Q4 · Canonical battery register:** Oil Stock Book (**recommended** — photos + append-only audit + one-battery-per-vehicle constraint); S3's battery screens become read-only/retired later.
 - **Q5 · Exposure:** portal LAN-only, or public behind TLS like `fuel-portal`? Also: is the launcher page public with only `/overview` behind portal login (**recommended**), or everything behind login?
 - **Q6 · Portal accounts:** who gets one? (Recommended: directors + GM + IT admin only; field staff keep using their own system logins and never need the portal.)
+- **Q7 · Costing method for store items:** **weighted-average cost at issue** for S3/S4 store items (**recommended** — the simplest defensible method, and S1's fuel already does better: an exact price snapshot at every issue) — or FIFO cost layers (more precise, more machinery)?
 
 _Reply "proceed" (with Q answers, or "all recommendations") and implementation starts at M0 in the order above._
 
@@ -270,4 +319,31 @@ Express 4 · node:sqlite · React 18/Vite SPA served by the same process · port
 
 ---
 
-_Referenced planning documents: `ZERO_TO_HERO_PLAN.md` (S1 billing push), `SYSTEM_PLAN.md` (S1 platform design — note §3 corrections), `ROADMAP.md` (S3 zero→hero ladder). This plan supersedes none of them; it adds the layer above._
+## Appendix B — Where the integrated-costing ideas landed
+
+The owner supplied a design brief for a single integrated workshop + project costing system (event-driven tracking, cost flows, MRN/GRN, job cards, batteries, billing & profit). This plan adopts its substance while honoring the standing decision to keep four sovereign systems with separate logins. The mapping — nothing was ignored silently:
+
+| Idea from the brief | Where it landed |
+|---|---|
+| Event-driven tracking (who / what / where / when / qty / price) | ✅ Already how all four systems record; elevated to **Design principle 1** (§1) |
+| Cost flow main store → site → vehicle → job card → bill | ✅ **Design principle 2** + the §4.4 cost model |
+| Single source of truth / one database, one login | ⚠️ **Adapted:** one system of record *per domain* + the portal spine as the single source of truth for identity (Design principle 3). A literal single database would mean rebuilding four working systems and contradicts the separate-logins brief |
+| Cost bill per site vs income bill; **Profit = Income − Cost** | ✅ **Adopted wholesale** — §4.4 and phase M5. Income already exists (S1's invoices), so only the cost aggregation is new work |
+| Fuel: purchase/GRN → stock → issue with automatic cost pick | ✅ Exists in S1 (price snapshot at every issue; bulk tanks + dip reconciliation); **Design principle 6** |
+| Site-wise allowed fuel list + daily/weekly limits per vehicle | ○ Adopted as an S1 enhancement in **M7** — enforced at fuel-request approval |
+| MRN/GRN with per-line pricing and traceability | ✅ Exists in S3 (receiving desk, pricing & audit view, stock-checked issue desk) |
+| Item master with costing method per item | ⚠️ Partially exists (S3/S4 item catalogs with unit prices); the method question is **decision Q7** (weighted average recommended) |
+| Job cards: labour + parts + external expenses; JobCost formula | ✅ Exists in S3 (`jobTotal = max(labour + parts + issues, recordedCost)`, per-mechanic labour rates) |
+| Battery entity with images, install dates, replacement events | ✅ Exists in S4 (mandatory photo, append-only event audit, one live battery per vehicle); **warranty period / expected-replacement alerts / claims** adopted as an S4 enhancement in **M7** |
+| Cost per km / per hour | ✅ Falls out of S1 meter readings once the spine joins costs to machines (§4.4) |
+| Correction entries, never overwrites; audit trails | ✅ Exists (S1 approved corrections with signed documents; audit logs in all four); **Design principle 5** |
+| Roles: main store / site supervisors / workshop / management | ✅ Exists per system (§2 role columns); the portal adds the management layer (**Q6**) |
+| Start with one site and a few vehicles | ✅ Adopted as **M5's verification rule** — one pilot site reconciled by hand to the rupee before any other site's P/L is trusted |
+| Strict coding standards (vehicle/item/site codes unique, never change) | ✅ That *is* the spine (**M4**) — the E&C code is the canonical machine key; free-text names in S3 get mapped, not renamed |
+| Images in structured paths, store the path not the blob | ⚠️ Noted; S2 stores files under `public/uploads/<phase>_<uuid>` and S4 under `/uploads` — kept as-is, but both must be auth-gated first (**G2, G3**) |
+| Tech options: Django/Flask or Node + PostgreSQL/MySQL; or Excel + scripts | ❌ **Rejected** — four production systems already run on Next.js/Express + SQLite with months of real 2026 data, tests and CI; rebuilding on a new stack (or regressing to spreadsheets) discards working software. Postgres stays a documented escape hatch if write-concurrency ever demands it (S3's own roadmap already says the same) |
+| 2–3 week requirements phase before building | ⚠️ Adapted — the 2026-07-05 code scan (Appendix A) already did the discovery; §8's decision list is the only requirements work left, then M0 starts |
+
+---
+
+_Referenced planning documents: `ZERO_TO_HERO_PLAN.md` (S1 billing push), `SYSTEM_PLAN.md` (S1 platform design — note §3 corrections), `ROADMAP.md` (S3 zero→hero ladder), and the owner's integrated-costing brief (mapped above). This plan supersedes none of them; it adds the layer above._

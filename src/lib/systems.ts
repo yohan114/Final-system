@@ -17,6 +17,27 @@ export interface Kpi {
   href?: string;
 }
 
+// A snapshot payload: the KPI list plus operational metadata the systems
+// report alongside it. Stored as JSON in KpiSnapshot.payload — older rows are
+// a bare Kpi[] array, so parse with snapshotFromPayload().
+export interface SummarySnapshot {
+  kpis: Kpi[];
+  // Newest backup the system has on disk (ISO), null = none found, undefined =
+  // the system predates backup reporting.
+  lastBackupAt?: string | null;
+}
+
+export function snapshotFromPayload(payload: string): SummarySnapshot | null {
+  try {
+    const parsed = JSON.parse(payload);
+    if (Array.isArray(parsed)) return { kpis: parsed as Kpi[] };
+    if (parsed && Array.isArray(parsed.kpis)) return parsed as SummarySnapshot;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Read one system's KPI summary. Server-to-server with the per-system token
 // (from tokenEnv); a 4s timeout so a slow system can't stall the launcher.
 // Returns null when the token isn't configured yet or the read fails.
@@ -24,7 +45,7 @@ async function fetchSummary(sys: {
   baseUrl: string;
   summaryPath: string;
   tokenEnv: string | null;
-}): Promise<Kpi[] | null> {
+}): Promise<SummarySnapshot | null> {
   if (!sys.summaryPath || !sys.tokenEnv) return null;
   const token = process.env[sys.tokenEnv];
   if (!token) return null;
@@ -40,7 +61,10 @@ async function fetchSummary(sys: {
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data?.kpis)) return null;
-    return data.kpis.slice(0, 4) as Kpi[];
+    return {
+      kpis: data.kpis.slice(0, 4) as Kpi[],
+      lastBackupAt: typeof data.lastBackupAt === "string" ? data.lastBackupAt : null,
+    };
   } catch {
     return null;
   } finally {
@@ -94,38 +118,43 @@ export async function pollAllSystems() {
         },
       });
 
-      let kpis: Kpi[] | null = null;
+      let snapshot: SummarySnapshot | null = null;
       let kpisAt: string | null = null;
       let kpisStale = false;
 
       if (status.ok) {
-        kpis = await fetchSummary(sys);
-        if (kpis) {
+        snapshot = await fetchSummary(sys);
+        if (snapshot) {
           const snap = await prisma.kpiSnapshot.create({
-            data: { systemId: sys.id, payload: JSON.stringify(kpis) },
+            data: { systemId: sys.id, payload: JSON.stringify(snapshot) },
           });
           kpisAt = snap.at.toISOString();
         }
       }
 
       // Fall back to the last good snapshot when this poll produced none.
-      if (!kpis) {
+      if (!snapshot) {
         const latest = await prisma.kpiSnapshot.findFirst({
           where: { systemId: sys.id },
           orderBy: { at: "desc" },
         });
         if (latest) {
-          try {
-            kpis = JSON.parse(latest.payload) as Kpi[];
+          snapshot = snapshotFromPayload(latest.payload);
+          if (snapshot) {
             kpisAt = latest.at.toISOString();
             kpisStale = true;
-          } catch {
-            kpis = null;
           }
         }
       }
 
-      return { system: sys, status, kpis, kpisAt, kpisStale };
+      return {
+        system: sys,
+        status,
+        kpis: snapshot?.kpis ?? null,
+        kpisAt,
+        kpisStale,
+        lastBackupAt: snapshot?.lastBackupAt,
+      };
     })
   );
 

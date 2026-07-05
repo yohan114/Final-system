@@ -165,9 +165,21 @@ app.get('/api/portal/summary', (req, res) => {
         "SELECT COUNT(*) AS c FROM job_requests WHERE status IN ('PENDING_TM','PENDING_OM')"
     ) || {}).c || 0;
     const rs = (n) => 'Rs ' + Math.round(Number(n) || 0).toLocaleString('en-LK');
+    // Newest automatic backup in ./backups — the portal flags it when stale.
+    let lastBackupAt = null;
+    try {
+        let latest = 0;
+        for (const f of fs.readdirSync(BACKUP_DIR)) {
+            if (!f.endsWith('.db')) continue;
+            const m = fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs;
+            if (m > latest) latest = m;
+        }
+        if (latest) lastBackupAt = new Date(latest).toISOString();
+    } catch (_) {}
     res.json({
         system: 'workshop',
         generatedAt: new Date().toISOString(),
+        lastBackupAt,
         kpis: [
             { label: 'Spend this month', value: rs(d.spend.mtd), tone: 'neutral', href: '/item_tracker.html#dashboard' },
             { label: 'Pending MRN lines', value: d.pending.counts.total, tone: d.pending.counts.total > 0 ? 'warn' : 'good', href: '/item_tracker.html#tracker' },

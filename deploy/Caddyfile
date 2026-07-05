@@ -1,0 +1,46 @@
+# E&C Super Master System — reverse proxy (Caddy v2)
+#
+# One host per system; Caddy terminates TLS and reverse-proxies to the local
+# port each app listens on. Point each subdomain's DNS A record at this machine.
+#
+#   caddy run --config ./Caddyfile          # foreground
+#   caddy start --config ./Caddyfile        # background (or run as a service)
+#
+# Public deployment (automatic HTTPS via Let's Encrypt) — the default below.
+# For a LAN-only install with no public DNS, use the `tls internal` variant at
+# the bottom instead (Caddy issues its own certs from a local CA).
+
+portal.ec-workshops.online {
+	reverse_proxy localhost:4400
+}
+
+fuel-portal.ec-workshops.online {
+	reverse_proxy localhost:3300
+}
+
+stores.ec-workshops.online {
+	reverse_proxy localhost:1111
+}
+
+workshop.ec-workshops.online {
+	reverse_proxy localhost:5000
+}
+
+oil.ec-workshops.online {
+	reverse_proxy localhost:3000
+}
+
+# ── LAN-only variant (internal CA, no public DNS) ────────────────────────────
+# Replace the blocks above with these if the portal is not internet-facing.
+# Add each name to the office DNS (or hosts files) pointing at this machine.
+#
+# portal.ec.local    { tls internal
+#   reverse_proxy localhost:4400 }
+# fuel.ec.local      { tls internal
+#   reverse_proxy localhost:3300 }
+# stores.ec.local    { tls internal
+#   reverse_proxy localhost:1111 }
+# workshop.ec.local  { tls internal
+#   reverse_proxy localhost:5000 }
+# oil.ec.local       { tls internal
+#   reverse_proxy localhost:3000 }

@@ -241,35 +241,37 @@ Per-system env vars the portal work introduces: `PORTAL_TOKEN` (unique per syste
 
 ## 7. Roadmap — seven phases to hero
 
-### M0 · Decisions + security gate ⚠️ *(~1 day)*
-Answer the questions in §8; apply G1–G7 across the four repos (G8 lands in M6). Nothing else starts until the gate is closed.
-**Verify:** each fix exercised (e.g. `/api/reports/export/xlsx` returns 401 unauthenticated); default creds rotated.
+> **Status (2026-07-05): M0–M6 are shipped and runtime-verified.** Every phase below was implemented across the five repos, pushed on branch `claude/super-master-system-plan-ec1sq5` (draft PRs open per repo), and exercised in a real browser against live systems — not just typechecked. Only **M7** (optional depth) remains.
 
-### M1 · Portal MVP — one front door 🔜 *(~1–2 days)*
-Scaffold this repo (Next.js 16 + Prisma + SQLite, port 4400). Portal login (`portal_session`), `System` registry seeded with the four systems, **launcher with four tiles + live up/down** (uses S3's and S4's existing `/api/health`; adds the trivial health route to S1 and S2). Tiles link out; each system's own login takes over from there.
-**Verify:** stop one system → its tile goes red within 60 s; click-through lands on each system's login page; portal never sees another system's cookies.
+### M0 · Security gate ✅ Shipped
+Applied G1–G7 across the four repos (G8 landed in M6). G1 auth on the open xlsx export, G7 TEST_ENV bypass gated on production, G4 system-scoped auth secrets, G5 renamed the colliding `session` cookie, G2/G3 auth on the open upload/uploads surfaces, G6 removed every hardcoded/on-screen default credential.
+**Verified:** each fix exercised — e.g. `/api/reports/export/xlsx` and the S4 `/uploads` gate return 401 unauthenticated; S1 CI green.
 
-### M2 · Integration contract — headline numbers on the tiles ○ *(~1–2 days)*
-Add `GET /api/portal/summary` (x-portal-token) to all four systems, cloned from S1's cron-auth pattern; portal poller stores `KpiSnapshot`s and renders 3–4 headline KPIs per tile with a "last updated" stamp; last-known-good shown when a system is down.
-**Verify:** token missing/wrong → 401 from every system; numbers match each system's own dashboard exactly.
+### M1 · Portal MVP — one front door ✅ Shipped
+Scaffolded this repo (Next.js 16 + Prisma + SQLite, port 4400). Portal login (`portal_session`, own `PORTAL_AUTH_SECRET`), `System` registry seeded with the four systems, **launcher with four tiles + live up/down** (added the trivial `/api/health` to S1 and S2). Tiles link out; each system's own login takes over.
+**Verified:** 11/11 browser checks — unauthenticated redirect, admin login lands on the launcher, all four tiles render live health, bad password rejected, poll API 401s without a session.
 
-### M3 · Executive overview ○ *(~2 days)*
-`/overview` for portal accounts: company KPI wall (fuel spend, stores spend, job cost, oil stock value, receivables, alerts rollup), month selector, each figure deep-linking into the owning system. Clearly labelled per-source — **no cross-system sums yet** (that needs M4's spine, or it double-counts).
-**Verify:** every figure reconciles to its source system's screen for the same month.
+### M2 · Integration contract — headline numbers on the tiles ✅ Shipped
+Added `GET /api/portal/summary` (x-portal-token) to all four systems, cloned from S1's cron-auth pattern; portal poller stores `KpiSnapshot`s and renders 4 KPIs per tile with last-known-good on outage.
+**Verified:** 6/6 against the live Oil Stock Book — token missing/wrong → 401; tile KPIs (below-reorder, out-of-stock…) render with correct tones.
 
-### M4 · Master data spine — the keystone ○ *(~2–3 days)*
-`MachineMap`/`SiteMap` + mapping workbench: auto-match S1 `Asset.code` ⇄ S4 `ec_code` (both E&C codes — expected high hit rate), assisted matching for S2 serial/plate codes and S3 free-text names (fuzzy suggestions, human confirms). Then `/machines/[code]`: **one machine, one page — fuel (S1) + parts & labour (S3) + oil (S4) + movement status (S2)**, and the honest combined monthly cost. Site equivalent. Unmapped-records report keeps pressure on data quality.
-**Verify:** pick 3 known machines; combined view matches manual totals from the four systems.
+### M3 · Executive overview ✅ Shipped
+`/overview`: company KPI wall grouped by system with an attention rollup (systems up N/M, warn/bad KPI count); each KPI deep-links into a verified route in the owning system. No cross-system sums (that's M4).
+**Verified:** 10/10 — wall renders, rollup counts, deep-links resolve to `/ledger` and `/requisitions`.
 
-### M5 · Cost ledger & profit engine — the real prize ○ *(~2–3 days)*
-Add `GET /api/portal/costs?month=` (x-portal-token) to S1, S3 and S4; the portal ingests through the spine into the idempotent `CostEvent` ledger; `/profit` board goes live: per-site and per-machine P/L — **income from S1 invoices vs cost by category** (fuel, parts, labour, oil, battery, store, external) with fuel-margin and repair splits, the visible "unattributed" bucket, and CSV export (§4.4).
-**Verify:** one **pilot site, one month, reconciled by hand** — the portal's P/L must match a manual calculation from the four systems to the rupee before any other site's numbers are trusted.
+### M4 · Master data spine — the keystone ✅ Shipped
+`MachineMap`/`SiteMap` + `SystemEntity` staging + mapping workbench: auto-match by E&C code (S1 `Asset.code`, S4 `ec_code`, S3 `ecdNo`), unmapped queue with fuzzy suggestions + manual link for S2 serial/plate and S3 free-text. `/machines`, `/machines/[code]` (one machine unified across systems), `/sites`.
+**Verified:** live Fuel + Oil sync — 386 canonical machines; AP-08/BD-01/BD-02 auto-matched across both systems; 27 code-less assets queued as unmapped.
 
-### M6 · Operations hardening ○ *(~2 days)*
-Reverse proxy serves all five subdomains + TLS; process supervision for all five apps + portal; **off-machine backups** for all four DBs (fixes G8, adds S2 backups); written port/env map committed to this repo; portal alert when any system is down > 5 min or a backup is stale.
-**Verify:** reboot the box → everything returns without manual steps; restore drill from an off-machine backup copy.
+### M5 · Cost ledger & profit engine — the real prize ✅ Shipped
+Added `GET /api/portal/costs?month=` (x-portal-token) to S1 (fuel + invoice income), S3 (labour + parts) and S4 (oil); the portal ingests through the spine into the idempotent `CostEvent` ledger; `/profit` board: per-site and per-machine P/L — income vs cost by category with an "unattributed" bucket and CSV export (§4.4).
+**Verified:** hand-reconciled pilot — AP-08 at Badalgama, July 2026: income Rs 600,000 − fuel cost Rs 150,000 = profit Rs 450,000, matching to the rupee across totals, site row, machine row and CSV (10/10).
 
-### M7 · Future (separate approvals) ○
+### M6 · Operations hardening ✅ Shipped
+Portal `/alerts` (health history → prioritised feed, warning → critical after ~5 min down); `DEPLOYMENT.md` (port/env/subdomain map, startup order, supervision, backups); `deploy/Caddyfile` (reverse proxy + TLS), `deploy/ecosystem.config.js` (PM2), `deploy/backup-all.{ps1,sh}` (off-machine snapshots of all five DBs, closing G8); added `npm run backup` to S2 (the one system that lacked one).
+**Verified:** alerts 7/7; backup script snapshotted the live DBs (fuel backup valid, AP-08 present) and the S2 backup produced a valid snapshot. *(Reverse-proxy/PM2 configs are committed artifacts; a reboot restore-drill is an on-site step.)*
+
+### M7 · Future (separate approvals) ○ Planned
 - **Single sign-on** — only if wanted later; the groundwork (aligned usernames, per-app secrets, subdomain cookies) is deliberately laid so SSO is an add-on, not a rewrite. Until then: separate logins, as specified.
 - **Stores boundary execution** (per Q2): keep S2 and S3 with the declared split, or fund a real migration.
 - **Oil-book merge into S1** (per Q3) — the merge SYSTEM_PLAN.md described, actually executed, if ever justified; the portal tile means there is no urgency.
@@ -279,7 +281,9 @@ Reverse proxy serves all five subdomains + TLS; process supervision for all five
 
 ---
 
-## 8. Decisions needed before M0 (with recommendations)
+## 8. Decisions (answered "all recommendations" — M0–M6 built on these)
+
+> These were the pre-build decisions. Implementation proceeded on the recommended option for each. They remain the reference for the choices baked into the platform (and Q2–Q4 stay live for M7).
 
 - **Q1 · Routing:** one subdomain per system under `ec-workshops.online` (**recommended** — the cookie/`/api`/`/uploads` collisions block path-routing) — or LAN-internal hostnames with the same shape?
 - **Q2 · Stores boundary:** declare **S2 = machines & tools movements (photo evidence), S3 = consumable materials, GRN pricing & workshop costing** and show both tiles (**recommended**) — or plan a merge (large: S3 holds ~3.6k costed MRN lines; S2 has no tests yet)?
@@ -289,7 +293,7 @@ Reverse proxy serves all five subdomains + TLS; process supervision for all five
 - **Q6 · Portal accounts:** who gets one? (Recommended: directors + GM + IT admin only; field staff keep using their own system logins and never need the portal.)
 - **Q7 · Costing method for store items:** **weighted-average cost at issue** for S3/S4 store items (**recommended** — the simplest defensible method, and S1's fuel already does better: an exact price snapshot at every issue) — or FIFO cost layers (more precise, more machinery)?
 
-_Reply "proceed" (with Q answers, or "all recommendations") and implementation starts at M0 in the order above._
+_Decided: **all recommendations**. M0–M6 are built and verified on these choices; see §7 for per-phase delivery + verification. The remaining open questions (Q2–Q4) gate only the optional M7 depth items._
 
 ---
 

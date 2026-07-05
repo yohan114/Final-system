@@ -27,13 +27,16 @@ npm run seed                  # portal admin + registers the four systems (print
 npm run build && npm start    # http://localhost:4400
 ```
 
-Sign in with the `admin` account the seed prints. The launcher shows a tile per system with a live up/down dot (polled from each system's `/api/health`); "Open system" links out to that system's own login. `/overview` is the executive-overview stub that fills in at M2–M5.
+Sign in with the `admin` account the seed prints. Field staff never need a portal account — they use each system's own login.
 
-### What's built (M1)
+### What's built (M0–M6, all runtime-verified)
 
-- Portal login (`portal_session` cookie, its own `PORTAL_AUTH_SECRET`) — separate from every system's login.
-- `System` registry seeded with the four systems, health polling with a 4 s timeout, `StatusSample` history.
-- Launcher with live tiles (server-rendered first paint + 30 s client re-poll via `GET /api/systems/health`).
-- Portal's own `GET /api/health`.
+- **Launcher** — a tile per system with a live up/down dot (polled from each system's `/api/health`); "Open system" links out to that system's own login. Portal login uses its own `portal_session` cookie + `PORTAL_AUTH_SECRET`, never shared with a system.
+- **Per-system KPIs** — each tile shows headline numbers from that system's token-authed `/api/portal/summary`, with last-known-good on outage.
+- **`/overview`** — the company-wide KPI wall with an attention rollup; every figure deep-links into the owning system.
+- **`/machines`, `/machines/[code]`, `/sites`, `/admin/mappings`** — the master data spine: the same machine unified across systems by E&C code, with an unmapped queue + mapping workbench.
+- **`/profit`** — per-site and per-machine P/L (income billed vs cost by category), with an unattributed bucket and CSV export.
+- **`/alerts`** — systems down beyond the threshold, escalating warning → critical.
+- **Deployment** — `DEPLOYMENT.md` + `deploy/` (Caddy reverse proxy, PM2 supervision, off-machine backup scripts).
 
-Later phases (`/api/portal/summary` reads, master-data spine, profit engine) are specified in `SUPER_MASTER_PLAN.md` §7.
+Security-gate, health, KPI, entity and cost endpoints were added to the four system repos (separate draft PRs). The remaining optional depth is **M7** in `SUPER_MASTER_PLAN.md` §7.

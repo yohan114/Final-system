@@ -86,6 +86,7 @@ model MachineMap {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   entities      SystemEntity[]
+  costEvents    CostEvent[]
 }
 
 // Canonical site/project, identified by a normalized name.
@@ -96,6 +97,35 @@ model SiteMap {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   entities     SystemEntity[]
+  costEvents   CostEvent[]
+}
+
+// The profit engine's ledger (M5). One row per cost/income event pulled from a
+// system's /api/portal/costs, idempotent on (systemKey, sourceRef), linked to
+// the canonical machine/site so profit = income − cost rolls up per site and
+// per machine. Money in LKR cents. The portal never writes back to the systems.
+model CostEvent {
+  id          String      @id @default(uuid())
+  systemKey   String
+  sourceRef   String // unique within a system → idempotent re-ingest
+  kind        String // "cost" | "income"
+  category    String // fuel | parts | labour | oil | income
+  month       String // "YYYY-MM"
+  occurredAt  DateTime
+  machineCode String? // raw code as given by the system
+  siteRef     String? // raw site name as given by the system
+  qty         Float?
+  amountCents Int
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteId      String?
+  site        SiteMap?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+
+  @@unique([systemKey, sourceRef])
+  @@index([month])
+  @@index([month, siteId])
+  @@index([month, machineId])
 }
 
 // Staging: one row per (system, kind, localId) — every machine/site pulled from

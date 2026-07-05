@@ -7,6 +7,43 @@ export interface SystemStatus {
   checkedAt: string;
 }
 
+export interface Kpi {
+  label: string;
+  value: string | number;
+  tone?: "good" | "warn" | "bad" | "neutral";
+}
+
+// Read one system's KPI summary. Server-to-server with the per-system token
+// (from tokenEnv); a 4s timeout so a slow system can't stall the launcher.
+// Returns null when the token isn't configured yet or the read fails.
+async function fetchSummary(sys: {
+  baseUrl: string;
+  summaryPath: string;
+  tokenEnv: string | null;
+}): Promise<Kpi[] | null> {
+  if (!sys.summaryPath || !sys.tokenEnv) return null;
+  const token = process.env[sys.tokenEnv];
+  if (!token) return null;
+  const url = `${sys.baseUrl.replace(/\/$/, "")}${sys.summaryPath}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      cache: "no-store",
+      headers: { "x-portal-token": token },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data?.kpis)) return null;
+    return data.kpis.slice(0, 4) as Kpi[];
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Poll one system's health endpoint, server-to-server, with a hard timeout so a
 // hung system can never block the launcher. Never throws — a failure is just a
 // down status.
@@ -31,8 +68,10 @@ export async function checkHealth(baseUrl: string, healthPath: string): Promise<
   }
 }
 
-// Check every enabled system and persist a StatusSample for each. Returns the
-// systems with their live status attached.
+// Check every enabled system: persist a StatusSample, and when it's up (and a
+// token is configured) fetch its KPI summary and persist a KpiSnapshot. KPIs
+// for display fall back to the latest stored snapshot (last-known-good) so the
+// tiles keep showing numbers through a brief outage.
 export async function pollAllSystems() {
   const systems = await prisma.system.findMany({
     where: { enabled: true },
@@ -50,7 +89,39 @@ export async function pollAllSystems() {
           detail: status.detail ?? undefined,
         },
       });
-      return { system: sys, status };
+
+      let kpis: Kpi[] | null = null;
+      let kpisAt: string | null = null;
+      let kpisStale = false;
+
+      if (status.ok) {
+        kpis = await fetchSummary(sys);
+        if (kpis) {
+          const snap = await prisma.kpiSnapshot.create({
+            data: { systemId: sys.id, payload: JSON.stringify(kpis) },
+          });
+          kpisAt = snap.at.toISOString();
+        }
+      }
+
+      // Fall back to the last good snapshot when this poll produced none.
+      if (!kpis) {
+        const latest = await prisma.kpiSnapshot.findFirst({
+          where: { systemId: sys.id },
+          orderBy: { at: "desc" },
+        });
+        if (latest) {
+          try {
+            kpis = JSON.parse(latest.payload) as Kpi[];
+            kpisAt = latest.at.toISOString();
+            kpisStale = true;
+          } catch {
+            kpis = null;
+          }
+        }
+      }
+
+      return { system: sys, status, kpis, kpisAt, kpisStale };
     })
   );
 

@@ -45,6 +45,7 @@ model System {
   updatedAt   DateTime       @updatedAt
 
   samples     StatusSample[]
+  snapshots   KpiSnapshot[]
 
   @@index([sortOrder])
 }
@@ -58,6 +59,19 @@ model StatusSample {
   ok        Boolean
   latencyMs Int?
   detail    String?
+
+  @@index([systemId, at])
+}
+
+// One row per successful /api/portal/summary read. The tiles render the latest
+// successful snapshot (last-known-good), so KPIs still show when a system is
+// briefly down. payload is the JSON kpis array [{ label, value, tone }].
+model KpiSnapshot {
+  id       String   @id @default(uuid())
+  systemId String
+  system   System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  at       DateTime @default(now())
+  payload  String
 
   @@index([systemId, at])
 }

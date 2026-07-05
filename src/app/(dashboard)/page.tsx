@@ -1,16 +1,17 @@
 import { prisma } from "@/lib/db";
 import { pollAllSystems } from "@/lib/systems";
-import SystemTiles, { TileSystem, TileStatus } from "@/components/SystemTiles";
+import SystemTiles, { TileSystem, TileState } from "@/components/SystemTiles";
 
-// The launcher polls every enabled system's health on render so the first paint
-// already shows up/down, then the client component re-polls every 30s.
+// The launcher polls every enabled system's health (and KPI summary) on render
+// so the first paint already shows status + numbers, then the client component
+// re-polls every 30s.
 export const dynamic = "force-dynamic";
 
 export default async function LauncherPage() {
   const enabled = await prisma.system.count({ where: { enabled: true } });
 
   let systems: TileSystem[] = [];
-  const initial: Record<string, TileStatus> = {};
+  const initial: Record<string, TileState> = {};
 
   if (enabled > 0) {
     const results = await pollAllSystems();
@@ -26,6 +27,9 @@ export default async function LauncherPage() {
         ok: r.status.ok,
         latencyMs: r.status.latencyMs,
         detail: r.status.detail,
+        kpis: r.kpis ?? null,
+        kpisAt: r.kpisAt,
+        kpisStale: r.kpisStale,
       };
     }
   }

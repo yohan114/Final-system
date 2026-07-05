@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { pollAllSystems } from "@/lib/systems";
 
-// Live status of every linked system, re-polled on demand. Portal-authenticated
-// (this handler self-checks the session because the proxy matcher skips /api).
+// Live status + KPIs of every linked system, re-polled on demand. Portal-
+// authenticated (self-checks the session because the proxy matcher skips /api).
 export async function GET() {
   const session = await getSession();
   if (!session) {
@@ -18,6 +18,9 @@ export async function GET() {
       ok: r.status.ok,
       latencyMs: r.status.latencyMs,
       detail: r.status.detail,
+      kpis: r.kpis ?? null,
+      kpisAt: r.kpisAt,
+      kpisStale: r.kpisStale,
     })),
   });
 }

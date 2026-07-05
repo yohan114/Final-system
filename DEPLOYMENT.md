@@ -7,7 +7,14 @@ supervisor, and backed up off-machine.
 
 Config artifacts referenced here live in [`deploy/`](./deploy):
 `Caddyfile` (reverse proxy), `ecosystem.config.js` (PM2 supervision),
-`backup-all.ps1` / `backup-all.sh` (off-machine backups).
+`setup-vps.sh` (one-command setup), `backup-all.ps1` / `backup-all.sh`
+(off-machine backups).
+
+> **Fast path:** on a fresh VPS with git + Node 20+, run
+> `bash deploy/setup-vps.sh` — it clones the five repos, installs, generates
+> all secrets into `Final-system/.env`, prepares the databases, builds, and
+> starts the unified server under PM2. Only DNS and Caddy remain manual
+> (printed at the end). §§1–5 below describe what it automates.
 
 ---
 

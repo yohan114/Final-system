@@ -272,6 +272,7 @@ Portal `/alerts` (health history → prioritised feed, warning → critical afte
 **Verified:** alerts 7/7; backup script snapshotted the live DBs (fuel backup valid, AP-08 present) and the S2 backup produced a valid snapshot. *(Reverse-proxy/PM2 configs are committed artifacts; a reboot restore-drill is an on-site step.)*
 
 ### M7 · Future (separate approvals) ○ Planned
+- ✅ **Fuel-margin split** *(shipped)* — the profit board now separates fuel billed vs fuel cost from rental profit: a fuel-margin headline card and a per-site/per-machine column. Income invoices are ingested split into rental / fuel / tax. Verified on the pilot (fuel billed Rs 180k − fuel cost Rs 150k = +Rs 30k margin, overall profit unchanged).
 - **Single sign-on** — only if wanted later; the groundwork (aligned usernames, per-app secrets, subdomain cookies) is deliberately laid so SSO is an add-on, not a rewrite. Until then: separate logins, as specified.
 - **Stores boundary execution** (per Q2): keep S2 and S3 with the declared split, or fund a real migration.
 - **Oil-book merge into S1** (per Q3) — the merge SYSTEM_PLAN.md described, actually executed, if ever justified; the portal tile means there is no urgency.

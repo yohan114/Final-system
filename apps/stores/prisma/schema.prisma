@@ -1,0 +1,92 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  username           String   @unique
+  name               String
+  passwordHash       String
+  role               String   // "ADMIN" | "HEADOFFICE" | "SK" | "VIEWER"
+  mustChangePassword Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Site {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  machines  Machine[]
+}
+
+model Machine {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique // Serial No / Plate No
+  condition   String   @default("GOOD") // "GOOD" | "DAMAGED" | "BROKEN"
+  status      String   @default("WORKSHOP") // "WORKSHOP" | "SITE" | "REPAIR"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  siteId      String?
+  site        Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  requests    MachineRequest[]
+  mediaFiles  MediaFile[]
+}
+
+model MachineRequest {
+  id               String       @id @default(uuid())
+  // 1. Request Phase
+  mrnNumber        String
+  itemName         String
+  quantity         Int          @default(1)
+  purpose          String?
+  targetSite       String?
+  status           String       @default("PENDING") // PENDING | APPROVED | RECEIVED_WORKSHOP | SENT_TO_SITE | RETURNED_WORKSHOP | IN_REPAIR
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  requestedBy      String?
+
+  // 2. Receipt Phase (Workshop)
+  receivedDate     DateTime?
+  receiptNotes     String?
+  receivedBy       String?
+
+  // 3. Dispatch to Site Phase
+  sentSiteDate     DateTime?
+  transferNoteNo   String?      // Transfer Note Number
+  dispatchNotes    String?
+  dispatchedBy     String?
+
+  // 4. Return Phase (Project End / Repair Site)
+  returnedDate     DateTime?
+  returnReason     String?      // "PROJECT_END" | "REPAIR" | "OTHER"
+  returnNotes      String?
+  returnedBy       String?
+
+  // Link to a specific physical machine if assigned
+  machineId        String?
+  machine          Machine?     @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
+  mediaFiles       MediaFile[]
+}
+
+model MediaFile {
+  id               String          @id @default(uuid())
+  url              String          // Relative path like /uploads/filename.ext
+  type             String          // "IMAGE" | "VIDEO"
+  phase            String          // "RECEIPT" | "DISPATCH" | "RETURN" | "MACHINE_REGISTER" | "MACHINE_ASSIGN"
+  createdAt        DateTime        @default(now())
+
+  requestId        String?
+  request          MachineRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  machineId        String?
+  machine          Machine?        @relation(fields: [machineId], references: [id], onDelete: Cascade)
+}

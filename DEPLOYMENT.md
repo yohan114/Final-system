@@ -20,29 +20,43 @@ Config artifacts referenced here live in [`deploy/`](./deploy):
 
 ## 1. One process, one port (single source of truth)
 
-The unified server — `Final-system/server/unified.mjs` — boots the Master
-Portal plus all four systems inside a single Node process on port **4400** and
-routes each request by hostname. A small VPS runs exactly two things: this
-process and Caddy.
+**ONE repository, one process.** This repo holds the whole estate — the Master
+Portal at the root and the four systems in `apps/`:
+
+```
+Final-system/              ← the ONE repo you clone
+├─ src/ …                  Master Portal (Next.js)
+├─ server/unified.mjs      the single process serving everything
+├─ apps/
+│  ├─ fuel/                Fleet Fuel & Billing   (Next.js)
+│  ├─ stores/              Main Stores Console    (Next.js)
+│  ├─ workshop/            Workshop & Stores      (Express)
+│  └─ oilbook/             Oil Stock Book         (Express + React)
+└─ deploy/                 Caddyfile · PM2 · setup-vps.sh · backups
+```
+
+The unified server boots the portal plus all four apps inside a single Node
+process on port **4400** and routes each request by hostname. A small VPS runs
+exactly two things: this process and Caddy.
 
 | Process | Port | Start command |
 |---|---|---|
-| **E&C unified server** (portal + all 4 systems) | **4400** | `npm run start:unified` in `Final-system` (set `EC_ROOT`) |
+| **E&C unified server** (portal + all 4 systems) | **4400** | `npm run start:unified` in `Final-system` |
 | Reverse proxy (Caddy) | **80 / 443** | `caddy run --config deploy/Caddyfile` |
 
-`EC_ROOT` is the folder holding the five repo checkouts (defaults to the
-parent of `Final-system`). Folder names are the repo names; override any
-location with `FUEL_APP_DIR` / `MAINSTORES_APP_DIR` / `WORKSHOP_APP_DIR` /
-`OILBOOK_APP_DIR`.
+App locations resolve automatically to `apps/*`; an explicit `FUEL_APP_DIR` /
+`MAINSTORES_APP_DIR` / `WORKSHOP_APP_DIR` / `OILBOOK_APP_DIR` overrides one,
+and the pre-monorepo layout (sibling checkouts under `EC_ROOT`) still works as
+a fallback for older installs.
 
-**Before first start (and after every update):** build each Next app once —
-`next build` in `Final-system`, `Fuel-System-V2` and `Main-stros-system`, and
-`npm run build` in `oil-stock-book/client`. The unified server serves the
-production builds.
+**Before first start (and after every update):** build once — `next build` at
+the repo root, in `apps/fuel` and `apps/stores`, and `npm run build` in
+`apps/oilbook/client`. The unified server serves the production builds.
+(`deploy/setup-vps.sh` does all of this.)
 
 Each system keeps its **own login, own dashboard, and own database** — the
-unified server only owns the socket. Every system can still run standalone
-(`npm start` / `node server.js` in its repo) for development; the old
+unified server only owns the socket. Every app still runs standalone for
+development (`npm run dev` / `node server.js` inside its folder); the old
 five-process port map (3000/1111/3300/5000/4400) still applies there.
 
 > Inside the unified process, requests to `/__sys/<systemKey>/api/*` form the

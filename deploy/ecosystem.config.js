@@ -5,7 +5,7 @@
 // on crash and comes back after reboot.
 //
 //   npm i -g pm2
-//   set EC_ROOT=C:\ec           (the folder that holds the five repo checkouts)
+//   set EC_ROOT=C:\ec           (the folder that holds the Final-system checkout)
 //   pm2 start ecosystem.config.js
 //   pm2 save
 //   pm2 startup                 (Linux/macOS: enables boot start)

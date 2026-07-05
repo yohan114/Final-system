@@ -5,11 +5,11 @@
 // login, dashboard and database — this file only owns the socket and routes
 // each request to the right app by the leftmost host label:
 //
-//   portal.<domain>            → Master Portal   (this repo, Next.js)
-//   fuel.portal.<domain>       → Fuel & Billing  (Fuel-System-V2, Next.js)
-//   stores.portal.<domain>     → Main Stores     (Main-stros-system, Next.js)
-//   workshop.portal.<domain>   → Workshop        (Store-Database, Express)
-//   oil.portal.<domain>        → Oil Stock Book  (oil-stock-book, Express)
+//   portal.<domain>            → Master Portal   (repo root, Next.js)
+//   fuel.portal.<domain>       → Fuel & Billing  (apps/fuel, Next.js)
+//   stores.portal.<domain>     → Main Stores     (apps/stores, Next.js)
+//   workshop.portal.<domain>   → Workshop        (apps/workshop, Express)
+//   oil.portal.<domain>        → Oil Stock Book  (apps/oilbook, Express)
 //   anything else              → Master Portal
 //
 // Server-to-server (the portal's health/KPI/cost polling) uses loopback paths
@@ -66,16 +66,21 @@ function loadAppEnv(dir) {
 const PORT = parseInt(process.env.PORT || "4400", 10);
 const EC_ROOT = process.env.EC_ROOT || path.dirname(PORTAL_DIR);
 
-const dirOf = (envName, fallbackName) => {
-  const dir = process.env[envName] || path.join(EC_ROOT, fallbackName);
-  return path.resolve(dir);
+// Monorepo-first: each app lives in apps/<name> inside this repo. An explicit
+// <SYS>_APP_DIR always wins, and the old multi-repo layout (sibling checkouts
+// under EC_ROOT) remains the fallback for existing installs.
+const dirOf = (envName, monoName, legacyName) => {
+  if (process.env[envName]) return path.resolve(process.env[envName]);
+  const mono = path.join(PORTAL_DIR, "apps", monoName);
+  if (fs.existsSync(mono)) return mono;
+  return path.resolve(path.join(EC_ROOT, legacyName));
 };
 
 const APPS = {
-  fuel: { dir: dirOf("FUEL_APP_DIR", "Fuel-System-V2"), kind: "next", sub: "fuel", name: "Fleet Fuel & Billing" },
-  mainstores: { dir: dirOf("MAINSTORES_APP_DIR", "Main-stros-system"), kind: "next", sub: "stores", name: "Main Stores Console" },
-  workshop: { dir: dirOf("WORKSHOP_APP_DIR", "Store-Database"), kind: "express-cjs", sub: "workshop", entry: "server.js", name: "Workshop & Stores" },
-  oilbook: { dir: dirOf("OILBOOK_APP_DIR", "oil-stock-book"), kind: "express-esm", sub: "oil", entry: "server/index.js", name: "Oil Stock Book" },
+  fuel: { dir: dirOf("FUEL_APP_DIR", "fuel", "Fuel-System-V2"), kind: "next", sub: "fuel", name: "Fleet Fuel & Billing" },
+  mainstores: { dir: dirOf("MAINSTORES_APP_DIR", "stores", "Main-stros-system"), kind: "next", sub: "stores", name: "Main Stores Console" },
+  workshop: { dir: dirOf("WORKSHOP_APP_DIR", "workshop", "Store-Database"), kind: "express-cjs", sub: "workshop", entry: "server.js", name: "Workshop & Stores" },
+  oilbook: { dir: dirOf("OILBOOK_APP_DIR", "oilbook", "oil-stock-book"), kind: "express-esm", sub: "oil", entry: "server/index.js", name: "Oil Stock Book" },
 };
 
 // Per-app DB URLs — absolute, set only when not already configured, BEFORE any

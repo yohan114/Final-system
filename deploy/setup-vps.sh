@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# E&C Super Master System — one-command VPS setup (unified deployment)
+# E&C Super Master System — one-command VPS setup (ONE repo, ONE process)
 #
-# Stands up the whole estate as ONE Node process on ONE port: clones the five
-# repos, installs dependencies, generates secrets into Final-system/.env,
-# prepares each database, builds everything, and starts the unified server
-# under PM2. Requires: git, Node.js 20+ (with npm), and network access to
-# GitHub. Caddy + DNS are the only manual steps (printed at the end).
+# The whole estate lives in this single repository: the Master Portal at the
+# root and the four systems in apps/{fuel,stores,workshop,oilbook}, all served
+# by one Node process (server/unified.mjs, port 4400). This script clones the
+# repo, installs dependencies, generates secrets into .env, prepares each
+# database, builds everything, and starts the unified server under PM2.
+# Requires: git, Node.js 20+ (with npm). Caddy + DNS are the only manual
+# steps (printed at the end).
 #
 #   curl -fsSL https://raw.githubusercontent.com/yohan114/Final-system/main/deploy/setup-vps.sh | bash
 #     — or —
 #   bash Final-system/deploy/setup-vps.sh
 #
 # Options (flags or env):
-#   EC_ROOT=/opt/ec          where the five checkouts live   (default /opt/ec)
-#   GITHUB_OWNER=yohan114    GitHub account holding the repos
+#   EC_ROOT=/opt/ec          where the checkout lives        (default /opt/ec)
+#   GITHUB_OWNER=yohan114    GitHub account holding the repo
 #   PORTAL_DOMAIN=portal.ec-workshops.online   the ONE main link
-#   --no-clone     use existing checkouts in EC_ROOT (skip git clone/pull)
+#   --no-clone     use the existing checkout (skip git clone/pull)
 #   --no-install   skip npm install steps
 #   --no-build     skip build steps
 #   --no-start     prepare everything but do not start PM2
@@ -39,8 +41,8 @@ for arg in "$@"; do
   esac
 done
 
-REPOS=(Final-system Fuel-System-V2 Main-stros-system Store-Database oil-stock-book)
 PORTAL="$EC_ROOT/Final-system"
+APP_DIRS=("$PORTAL" "$PORTAL/apps/fuel" "$PORTAL/apps/stores" "$PORTAL/apps/workshop" "$PORTAL/apps/oilbook")
 say()  { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 note() { printf '   %s\n' "$*"; }
 gen()  { node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"; }
@@ -53,38 +55,33 @@ NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 note "git $(git --version | awk '{print $3}') · node $(node -v) · EC_ROOT=$EC_ROOT · domain=$PORTAL_DOMAIN"
 
 if [ "$DO_CLONE" = 1 ]; then
-  say "Cloning / updating the five repositories"
+  say "Cloning / updating the repository (one repo holds everything)"
   mkdir -p "$EC_ROOT"
-  for r in "${REPOS[@]}"; do
-    if [ -d "$EC_ROOT/$r/.git" ]; then
-      note "$r exists — pulling latest default branch"
-      git -C "$EC_ROOT/$r" pull --ff-only
-    else
-      git clone "https://github.com/$GITHUB_OWNER/$r.git" "$EC_ROOT/$r"
-    fi
-  done
+  if [ -d "$PORTAL/.git" ]; then
+    note "Final-system exists — pulling latest default branch"
+    git -C "$PORTAL" pull --ff-only
+  else
+    git clone "https://github.com/$GITHUB_OWNER/Final-system.git" "$PORTAL"
+  fi
 else
-  say "Using existing checkouts in $EC_ROOT (--no-clone)"
-  for r in "${REPOS[@]}"; do [ -d "$EC_ROOT/$r" ] || { echo "missing $EC_ROOT/$r"; exit 1; }; done
+  say "Using existing checkout in $PORTAL (--no-clone)"
+  [ -d "$PORTAL" ] || { echo "missing $PORTAL"; exit 1; }
 fi
+for d in "${APP_DIRS[@]}"; do [ -d "$d" ] || { echo "missing $d — incomplete checkout?"; exit 1; }; done
 
 if [ "$DO_INSTALL" = 1 ]; then
-  say "Installing dependencies"
-  for d in "${REPOS[@]}"; do
-    if [ ! -d "$EC_ROOT/$d/node_modules" ]; then
-      note "npm install — $d"
-      (cd "$EC_ROOT/$d" && npm install --no-audit --no-fund)
+  say "Installing dependencies (each app keeps its own node_modules)"
+  for d in "${APP_DIRS[@]}" "$PORTAL/apps/oilbook/client"; do
+    if [ ! -d "$d/node_modules" ]; then
+      note "npm install — ${d#$EC_ROOT/}"
+      (cd "$d" && npm install --no-audit --no-fund)
     else
-      note "$d: node_modules present — skipping"
+      note "${d#$EC_ROOT/}: node_modules present — skipping"
     fi
   done
-  if [ ! -d "$EC_ROOT/oil-stock-book/client/node_modules" ]; then
-    note "npm install — oil-stock-book/client"
-    (cd "$EC_ROOT/oil-stock-book/client" && npm install --no-audit --no-fund)
-  fi
 fi
 
-say "Configuring Final-system/.env (single config for the whole box)"
+say "Configuring $PORTAL/.env (single config for the whole box)"
 ENV_FILE="$PORTAL/.env"
 if [ -f "$ENV_FILE" ]; then
   note ".env exists — keeping it untouched"
@@ -111,7 +108,7 @@ MAINSTORES_PORTAL_TOKEN="$(gen)"
 WORKSHOP_PORTAL_TOKEN="$(gen)"
 OILBOOK_PORTAL_TOKEN="$(gen)"
 
-# System auth secrets (the systems' own .env files may override with their own)
+# System auth secrets
 FUEL_AUTH_SECRET="$(gen)"
 MAINSTORES_AUTH_SECRET="$(gen)"
 
@@ -132,30 +129,30 @@ else
   note "portal: DB exists — re-running seed to refresh system links (idempotent)"
   (cd "$PORTAL" && npm run seed)
 fi
-if [ ! -f "$EC_ROOT/Fuel-System-V2/data/app.db" ]; then
+if [ ! -f "$PORTAL/apps/fuel/data/app.db" ]; then
   note "fuel: migrate + seed (set SEED_ADMIN_PASSWORD beforehand to choose the admin password)"
-  (cd "$EC_ROOT/Fuel-System-V2" && npx prisma migrate deploy && npx tsx prisma/seed.ts)
+  (cd "$PORTAL/apps/fuel" && npx prisma migrate deploy && npx tsx prisma/seed.ts)
 else
   note "fuel: DB exists — applying any pending migrations"
-  (cd "$EC_ROOT/Fuel-System-V2" && npx prisma migrate deploy)
+  (cd "$PORTAL/apps/fuel" && npx prisma migrate deploy)
 fi
-if [ ! -f "$EC_ROOT/Main-stros-system/dev.db" ]; then
-  note "mainstores: schema push + seed"
-  (cd "$EC_ROOT/Main-stros-system" && npx prisma db push && node prisma/seed.js)
+if [ ! -f "$PORTAL/apps/stores/dev.db" ]; then
+  note "stores: schema push + seed"
+  (cd "$PORTAL/apps/stores" && npx prisma db push && node prisma/seed.js)
 else
-  note "mainstores: DB exists — leaving as-is"
+  note "stores: DB exists — leaving as-is"
 fi
 note "workshop: creates/seeds its own DB on first boot (import legacy data with 'npm run migrate' if you have tracker_data.json)"
 note "oil book: creates/seeds its own DB on first boot (auto-imports data/source/*.xlsx when present)"
 
 if [ "$DO_BUILD" = 1 ]; then
   say "Building production bundles"
-  for d in Final-system Fuel-System-V2 Main-stros-system; do
-    note "next build — $d"
-    (cd "$EC_ROOT/$d" && npx prisma generate >/dev/null 2>&1 || true; npm run build)
+  for d in "$PORTAL" "$PORTAL/apps/fuel" "$PORTAL/apps/stores"; do
+    note "next build — ${d#$EC_ROOT/}"
+    (cd "$d" && npx prisma generate >/dev/null 2>&1 || true; npm run build)
   done
-  note "vite build — oil-stock-book/client"
-  (cd "$EC_ROOT/oil-stock-book/client" && npm run build)
+  note "vite build — apps/oilbook/client"
+  (cd "$PORTAL/apps/oilbook/client" && npm run build)
 fi
 
 if [ "$DO_START" = 1 ]; then

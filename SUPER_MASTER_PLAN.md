@@ -243,7 +243,7 @@ Per-system env vars the portal work introduces: `PORTAL_TOKEN` (unique per syste
 
 ## 7. Roadmap — seven phases to hero
 
-> **Status (2026-07-05): M0–M6 and M8 (unified server) are shipped and runtime-verified**, plus most of M7. Every phase below was implemented across the five repos, pushed on branch `claude/super-master-system-plan-ec1sq5` (draft PRs open per repo), and exercised in a real browser against live systems — not just typechecked. The estate now deploys as **one Node process on one port** (see M8) with one main link and four sub-domains.
+> **Status (2026-07-05): M0–M6, M8 (unified server) and M9 (one codebase) are shipped and runtime-verified**, plus most of M7. Everything now lives in **this one repository** (`apps/*` holds the four systems), deploys as **one Node process on one port**, and presents **one main link with four sub-domains**. Every phase was exercised in a real browser against live systems — not just typechecked. Next: M10 go-live (see the end of this section).
 
 ### M0 · Security gate ✅ Shipped
 Applied G1–G7 across the four repos (G8 landed in M6). G1 auth on the open xlsx export, G7 TEST_ENV bypass gated on production, G4 system-scoped auth secrets, G5 renamed the colliding `session` cookie, G2/G3 auth on the open upload/uploads surfaces, G6 removed every hardcoded/on-screen default credential.
@@ -314,6 +314,42 @@ portal plus all four systems inside a single process on one port (4400):
   and in a real browser: portal login + **all four tiles Up with live KPIs**,
   Fuel login through its sub-host, and each sub-host serving its own system
   (7/7 checks).
+
+### M9 · One codebase ✅ Shipped
+
+**All systems now live in ONE repository** — this repo. The four apps moved
+into `apps/{fuel,stores,workshop,oilbook}` (tracked files imported from each
+repo's merged `main`; full history stays in the original repos, which can be
+archived once this merges):
+
+- The unified server resolves `apps/*` automatically (explicit `<SYS>_APP_DIR`
+  still wins; the old sibling-checkout layout remains a fallback).
+- `deploy/setup-vps.sh` now clones **one repo** instead of five.
+- CI consolidated: root workflow runs the portal typecheck, Fuel's
+  lint/typecheck/tests, and Workshop's full build-and-test — each inside its
+  app folder.
+- Each Next app pins `turbopack.root`; the portal's tsconfig excludes `apps/`.
+- **Security fix found during the move:** the old Fuel repo had tracked its
+  live SQLite database (`data/app.db` + WAL/SHM — real fleet data and password
+  hashes) since its first commit. The monorepo excludes them and ignores
+  `/data/app.db` explicitly; archiving the old repos closes the exposure.
+- **Verified in the new layout**: unified boot from `apps/*` with no env
+  overrides, host routing 5/5, `/__sys` channel + guards, browser suite 5/5
+  (portal tiles all Up, Fuel login via sub-host), and Workshop's suite from
+  `apps/workshop` — 9 unit + 113 API tests, 0 failures.
+
+### M10 · Go-Live ○ Next (the remaining stages)
+
+1. **M10 · Go-live on the VPS** — DNS (`portal.…` + `*.portal.…` → VPS), run
+   `deploy/setup-vps.sh`, copy the real database files in, rotate every seeded
+   password, start Caddy. *Exit: all four tiles green on the live portal with
+   real data.*
+2. **M11 · Trust & safety net** — schedule `deploy/backup-all.*` off-machine
+   plus one restore drill; set `SMTP_*` so the alert digest actually emails;
+   add backup-staleness alerts; work the master-data unmapped queue to zero.
+3. **M12 · Depth (separate approvals)** — single sign-on across the systems;
+   per-site allowed-vehicle fuel lists; portal PWA; battery warranty claims;
+   store cost category once S3 issues carry an E&C code.
 
 ---
 

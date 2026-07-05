@@ -152,6 +152,22 @@ model SystemEntity {
   @@index([systemKey, kind])
 }
 
+// Every alert-digest email the portal composed, with its delivery outcome.
+// status is "simulated" when no SMTP is configured (the email is recorded but
+// not sent), else "sent" / "failed". Mirrors the systems' outbox pattern.
+model Outbox {
+  id        String   @id @default(uuid())
+  kind      String   @default("alert-digest")
+  to        String
+  subject   String
+  body      String
+  status    String // "simulated" | "sent" | "failed"
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Portal-side audit trail (logins, registry/mapping edits). The portal has no
 // write path into the four systems, so this only records portal actions.
 model AuditLog {

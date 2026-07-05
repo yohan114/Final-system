@@ -104,6 +104,11 @@ export async function ingestCosts(month: string): Promise<IngestReport> {
       report.systems.push({ key: sys.key, ok: false, costs: 0, income: 0 });
       continue;
     }
+    // Reflect the system's current state for this month: drop its prior events
+    // (so deleted/rebilled rows don't linger) before repopulating. Systems that
+    // don't respond keep their last-known events.
+    await prisma.costEvent.deleteMany({ where: { systemKey: sys.key, month } });
+
     const groups: [CostRow[], string][] = [
       [data.costs ?? [], "cost"],
       [data.income ?? [], "income"],
@@ -122,7 +127,7 @@ export async function ingestCosts(month: string): Promise<IngestReport> {
           where: { systemKey_sourceRef: { systemKey: sys.key, sourceRef: r.sourceRef } },
           update: {
             kind,
-            category: kind === "income" ? "income" : r.category ?? "other",
+            category: r.category ?? (kind === "income" ? "income" : "other"),
             month,
             occurredAt: new Date(r.occurredAt),
             machineCode: r.machineCode ?? undefined,
@@ -136,7 +141,7 @@ export async function ingestCosts(month: string): Promise<IngestReport> {
             systemKey: sys.key,
             sourceRef: r.sourceRef,
             kind,
-            category: kind === "income" ? "income" : r.category ?? "other",
+            category: r.category ?? (kind === "income" ? "income" : "other"),
             month,
             occurredAt: new Date(r.occurredAt),
             machineCode: r.machineCode ?? undefined,
@@ -170,7 +175,9 @@ export interface PnlRow {
   label: string;
   income: number;
   cost: number;
-  byCategory: Record<string, number>;
+  byCategory: Record<string, number>; // cost by category
+  incomeByCategory: Record<string, number>; // income by category (rental/fuel/tax)
+  fuelMargin: number; // fuel billed − fuel cost
   profit: number;
 }
 
@@ -194,17 +201,30 @@ export async function profitForMonth(month: string) {
           ? e.site?.label ?? "Unattributed"
           : e.machine?.canonicalCode ?? "Unattributed";
       if (!map.has(key)) {
-        map.set(key, { key, label, income: 0, cost: 0, byCategory: {}, profit: 0 });
+        map.set(key, {
+          key,
+          label,
+          income: 0,
+          cost: 0,
+          byCategory: {},
+          incomeByCategory: {},
+          fuelMargin: 0,
+          profit: 0,
+        });
       }
       const row = map.get(key)!;
       if (e.kind === "income") {
         row.income += e.amountCents;
+        row.incomeByCategory[e.category] = (row.incomeByCategory[e.category] ?? 0) + e.amountCents;
       } else {
         row.cost += e.amountCents;
         row.byCategory[e.category] = (row.byCategory[e.category] ?? 0) + e.amountCents;
       }
     }
-    for (const row of map.values()) row.profit = row.income - row.cost;
+    for (const row of map.values()) {
+      row.profit = row.income - row.cost;
+      row.fuelMargin = (row.incomeByCategory.fuel ?? 0) - (row.byCategory.fuel ?? 0);
+    }
     return [...map.values()].sort((a, b) => {
       if (a.key === "unattributed") return 1;
       if (b.key === "unattributed") return -1;
@@ -214,9 +234,16 @@ export async function profitForMonth(month: string) {
 
   const bySite = roll("site");
   const byMachine = roll("machine");
+  const sumWhere = (pred: (e: (typeof events)[number]) => boolean) =>
+    events.filter(pred).reduce((s, e) => s + e.amountCents, 0);
+  const fuelBilled = sumWhere((e) => e.kind === "income" && e.category === "fuel");
+  const fuelCost = sumWhere((e) => e.kind === "cost" && e.category === "fuel");
   const totals = {
-    income: events.filter((e) => e.kind === "income").reduce((s, e) => s + e.amountCents, 0),
-    cost: events.filter((e) => e.kind === "cost").reduce((s, e) => s + e.amountCents, 0),
+    income: sumWhere((e) => e.kind === "income"),
+    cost: sumWhere((e) => e.kind === "cost"),
+    fuelBilled,
+    fuelCost,
+    fuelMargin: fuelBilled - fuelCost,
   };
   return { bySite, byMachine, totals, eventCount: events.length };
 }

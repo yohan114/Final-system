@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const rupees = (c: number) => (c / 100).toFixed(2);
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
 
-  const header = ["Dimension", "Name", "Income", ...cats, "TotalCost", "Profit"];
+  const header = ["Dimension", "Name", "Income", ...cats, "TotalCost", "FuelMargin", "Profit"];
   const lines = [header.join(",")];
   for (const [dim, rows] of [["Site", bySite], ["Machine", byMachine]] as const) {
     for (const r of rows) {
@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
           rupees(r.income),
           ...cats.map((c) => rupees(r.byCategory[c] ?? 0)),
           rupees(r.cost),
+          rupees(r.fuelMargin),
           rupees(r.profit),
         ].join(",")
       );

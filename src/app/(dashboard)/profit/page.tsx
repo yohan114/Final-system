@@ -25,6 +25,7 @@ function PnlTable({ rows, dimLabel }: { rows: PnlRow[]; dimLabel: string }) {
                 <th key={c} className="px-4 py-3 font-medium text-right capitalize">{c}</th>
               ))}
               <th className="px-4 py-3 font-medium text-right">Cost</th>
+              <th className="px-4 py-3 font-medium text-right">Fuel margin</th>
               <th className="px-4 py-3 font-medium text-right">Profit</th>
             </tr>
           </thead>
@@ -42,6 +43,9 @@ function PnlTable({ rows, dimLabel }: { rows: PnlRow[]; dimLabel: string }) {
                   </td>
                 ))}
                 <td className="px-4 py-3 text-right">{r.cost ? rs(r.cost) : "—"}</td>
+                <td className={`px-4 py-3 text-right ${r.fuelMargin ? profitCls(r.fuelMargin) : "text-muted"}`}>
+                  {r.fuelMargin ? rs(r.fuelMargin) : "—"}
+                </td>
                 <td className={`px-4 py-3 text-right font-semibold ${profitCls(r.profit)}`}>
                   {rs(r.profit)}
                 </td>
@@ -79,7 +83,7 @@ export default async function ProfitPage(props: { searchParams: Promise<{ month?
         <ProfitControls month={month} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <div className="bg-card border border-card-border rounded-2xl p-5">
           <div className="text-2xl font-semibold">{rs(totals.income)}</div>
           <div className="text-xs text-muted mt-1">Income billed (Fuel invoices)</div>
@@ -91,6 +95,12 @@ export default async function ProfitPage(props: { searchParams: Promise<{ month?
         <div className="bg-card border border-card-border rounded-2xl p-5">
           <div className={`text-2xl font-semibold ${profitCls(profit)}`}>{rs(profit)}</div>
           <div className="text-xs text-muted mt-1">Profit = income − cost</div>
+        </div>
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <div className={`text-2xl font-semibold ${profitCls(totals.fuelMargin)}`}>{rs(totals.fuelMargin)}</div>
+          <div className="text-xs text-muted mt-1">
+            Fuel margin — {rs(totals.fuelBilled)} billed vs {rs(totals.fuelCost)} cost
+          </div>
         </div>
       </div>
 

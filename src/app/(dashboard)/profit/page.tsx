@@ -5,7 +5,7 @@ import { TrendingUp } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 const rs = (cents: number) => "Rs " + Math.round(cents / 100).toLocaleString("en-LK");
-const CATS = ["fuel", "parts", "labour", "oil", "other"];
+const CATS = ["fuel", "parts", "labour", "oil", "battery", "other"];
 
 function profitCls(n: number) {
   return n > 0 ? "text-emerald-400" : n < 0 ? "text-red-400" : "text-muted";

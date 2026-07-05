@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { bySite, byMachine } = await profitForMonth(month);
-  const cats = ["fuel", "parts", "labour", "oil", "other"];
+  const cats = ["fuel", "parts", "labour", "oil", "battery", "other"];
   const rupees = (c: number) => (c / 100).toFixed(2);
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
 

@@ -168,7 +168,7 @@ export async function ingestCosts(month: string): Promise<IngestReport> {
   return report;
 }
 
-export const COST_CATEGORIES = ["fuel", "parts", "labour", "oil", "other"] as const;
+export const COST_CATEGORIES = ["fuel", "parts", "labour", "oil", "battery", "other"] as const;
 
 export interface PnlRow {
   key: string; // siteId or machineId, or "unattributed"

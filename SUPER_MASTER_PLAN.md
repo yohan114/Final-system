@@ -281,7 +281,7 @@ Portal `/alerts` (health history → prioritised feed, warning → critical afte
 - **Stores boundary execution** (per Q2): keep S2 and S3 with the declared split, or fund a real migration.
 - **Oil-book merge into S1** (per Q3) — the merge SYSTEM_PLAN.md described, actually executed, if ever justified; the portal tile means there is no urgency.
 - **Battery register consolidation** (per Q4); alert email digest from the portal; portal PWA for phones.
-- **Site fuel discipline in S1** — per-site allowed-vehicle fuel lists and daily/weekly litre caps, enforced at fuel-request approval (closes the "unauthorized vehicle / runaway drawdown" gap at the source).
+- ✅ **Site fuel discipline in S1** *(shipped — daily litre cap)* — assets now carry an optional per-vehicle `dailyCapLitres`; a `checkDailyCap()` gate sums the vehicle's non-voided litres for the calendar day and blocks any issue that would push the day's total past the cap. Enforced in **both** fuel-out paths (direct issue + request approval), ahead of pricing so nothing is written when blocked; the cap is editable on the create/edit asset forms (blank = no limit). Verified against the real DB (at-cap allowed, over-cap blocked, voided + prior-day excluded, null = unlimited) and end-to-end over HTTP (cap set via the edit form persists across reload; an over-cap request approval stays PENDING with no issue created). *Per-site allowed-vehicle lists remain a future add-on.*
 - **Battery lifecycle depth in S4** — warranty period, expected-replacement-date alerts, and warranty-claim tracking on the existing photo register.
 
 ---
@@ -339,7 +339,7 @@ The owner supplied a design brief for a single integrated workshop + project cos
 | Single source of truth / one database, one login | ⚠️ **Adapted:** one system of record *per domain* + the portal spine as the single source of truth for identity (Design principle 3). A literal single database would mean rebuilding four working systems and contradicts the separate-logins brief |
 | Cost bill per site vs income bill; **Profit = Income − Cost** | ✅ **Adopted wholesale** — §4.4 and phase M5. Income already exists (S1's invoices), so only the cost aggregation is new work |
 | Fuel: purchase/GRN → stock → issue with automatic cost pick | ✅ Exists in S1 (price snapshot at every issue; bulk tanks + dip reconciliation); **Design principle 6** |
-| Site-wise allowed fuel list + daily/weekly limits per vehicle | ○ Adopted as an S1 enhancement in **M7** — enforced at fuel-request approval |
+| Site-wise allowed fuel list + daily/weekly limits per vehicle | ✅ Per-vehicle **daily litre cap** shipped in **M7** (enforced on both fuel-out paths, ahead of pricing); per-site allowed-vehicle lists remain a future add-on |
 | MRN/GRN with per-line pricing and traceability | ✅ Exists in S3 (receiving desk, pricing & audit view, stock-checked issue desk) |
 | Item master with costing method per item | ⚠️ Partially exists (S3/S4 item catalogs with unit prices); the method question is **decision Q7** (weighted average recommended) |
 | Job cards: labour + parts + external expenses; JobCost formula | ✅ Exists in S3 (`jobTotal = max(labour + parts + issues, recordedCost)`, per-mechanic labour rates) |

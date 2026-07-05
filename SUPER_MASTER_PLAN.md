@@ -243,7 +243,7 @@ Per-system env vars the portal work introduces: `PORTAL_TOKEN` (unique per syste
 
 ## 7. Roadmap — seven phases to hero
 
-> **Status (2026-07-05): M0–M6 are shipped and runtime-verified.** Every phase below was implemented across the five repos, pushed on branch `claude/super-master-system-plan-ec1sq5` (draft PRs open per repo), and exercised in a real browser against live systems — not just typechecked. Only **M7** (optional depth) remains.
+> **Status (2026-07-05): M0–M6 and M8 (unified server) are shipped and runtime-verified**, plus most of M7. Every phase below was implemented across the five repos, pushed on branch `claude/super-master-system-plan-ec1sq5` (draft PRs open per repo), and exercised in a real browser against live systems — not just typechecked. The estate now deploys as **one Node process on one port** (see M8) with one main link and four sub-domains.
 
 ### M0 · Security gate ✅ Shipped
 Applied G1–G7 across the four repos (G8 landed in M6). G1 auth on the open xlsx export, G7 TEST_ENV bypass gated on production, G4 system-scoped auth secrets, G5 renamed the colliding `session` cookie, G2/G3 auth on the open upload/uploads surfaces, G6 removed every hardcoded/on-screen default credential.
@@ -285,6 +285,35 @@ Portal `/alerts` (health history → prioritised feed, warning → critical afte
 - **Battery register consolidation** (per Q4); alert email digest from the portal; portal PWA for phones.
 - ✅ **Site fuel discipline in S1** *(shipped — daily litre cap)* — assets now carry an optional per-vehicle `dailyCapLitres`; a `checkDailyCap()` gate sums the vehicle's non-voided litres for the calendar day and blocks any issue that would push the day's total past the cap. Enforced in **both** fuel-out paths (direct issue + request approval), ahead of pricing so nothing is written when blocked; the cap is editable on the create/edit asset forms (blank = no limit). Verified against the real DB (at-cap allowed, over-cap blocked, voided + prior-day excluded, null = unlimited) and end-to-end over HTTP (cap set via the edit form persists across reload; an over-cap request approval stays PENDING with no issue created). *Per-site allowed-vehicle lists remain a future add-on.*
 - **Battery lifecycle depth in S4** — warranty period, expected-replacement-date alerts, and warranty-claim tracking on the existing photo register.
+
+### M8 · Unified server ✅ Shipped
+
+**One Node process hosts the whole estate** — chosen because the production VPS
+can't run five separate services. `Final-system/server/unified.mjs` boots the
+portal plus all four systems inside a single process on one port (4400):
+
+- The three Next.js apps boot via the custom-server API (`next({ dir })`), each
+  from **its own directory and node_modules**; the two Express apps export
+  their `app` (listen is skipped when embedded). Every system keeps its own
+  login, dashboard and database — nothing was merged.
+- **Routing**: by leftmost host label — `fuel.` / `stores.` / `workshop.` /
+  `oil.` → that system; any other host → the portal. Server-to-server polling
+  uses the in-process channel `/__sys/<key>/api/*` (API-only; pages are
+  host-routed only).
+- **Env de-collision**: per-app DB URLs (`PORTAL_/FUEL_/MAINSTORES_DATABASE_URL`,
+  derived absolute automatically), and every system now prefers
+  `<SYS>_PORTAL_TOKEN` — in unified mode one variable per system configures
+  both sides of the token pair. The unified server loads `Final-system/.env`
+  first (authoritative), then each app's own `.env` without overriding.
+- **Resilience**: a system that fails to boot serves 503 and shows red on its
+  tile; the rest of the estate keeps running. PM2 supervises the one process
+  (`deploy/ecosystem.config.js`); Caddy proxies all five hosts to :4400.
+- **Verified end-to-end** in one process (~430 MB RSS): host routing returns
+  each system's own `/api/health` (5/5), the `/__sys` channel serves all four
+  token-authed summaries (bad token 401, non-API 404, portal-via-channel 404),
+  and in a real browser: portal login + **all four tiles Up with live KPIs**,
+  Fuel login through its sub-host, and each sub-host serving its own system
+  (7/7 checks).
 
 ---
 

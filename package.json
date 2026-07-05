@@ -6,6 +6,7 @@
     "dev": "next dev -p 4400",
     "build": "next build",
     "start": "next start -p 4400",
+    "start:unified": "NODE_ENV=production node server/unified.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts"

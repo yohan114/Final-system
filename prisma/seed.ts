@@ -9,10 +9,24 @@ const adapter = new PrismaBetterSqlite3({
 });
 const prisma = new PrismaClient({ adapter });
 
-// baseUrl = where the portal polls health (server-to-server, on the box).
-// openUrl = where a person's browser goes to sign in to that system.
-// Both are env-overridable so production can point openUrl at the subdomains
-// while health polling stays on localhost.
+// One main link, four subs. Set PORTAL_PUBLIC_DOMAIN to the portal's public host
+// (e.g. "portal.ec-workshops.online") and every system's browser-facing address
+// is derived as "<subdomain>.<that domain>" — fuel.portal…, stores.portal…, etc.
+// So the whole estate is configured from a single value.
+//
+// baseUrl = where the portal polls health (server-to-server, on the box) — stays
+//           on localhost, never changes with the public domain.
+// openUrl = where a person's browser goes to sign in to that system. Resolution
+//           order: an explicit per-system override (<SYS>_OPEN_URL) → the derived
+//           "<sub>.<PORTAL_PUBLIC_DOMAIN>" → the *_BASE_URL / localhost fallback.
+const PORTAL_PUBLIC_DOMAIN = (process.env.PORTAL_PUBLIC_DOMAIN || "").trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
+function resolveOpenUrl(explicit: string | undefined, subdomain: string, baseFallback: string): string {
+  if (explicit && explicit.trim()) return explicit.trim();
+  if (PORTAL_PUBLIC_DOMAIN) return `https://${subdomain}.${PORTAL_PUBLIC_DOMAIN}`;
+  return baseFallback;
+}
+
 const SYSTEMS = [
   {
     key: "fuel",
@@ -21,7 +35,7 @@ const SYSTEMS = [
       "Fuel requests, issues, bulk tanks, meter readings, service planner and monthly rental + fuel invoicing.",
     icon: "fuel",
     baseUrl: process.env.FUEL_BASE_URL || "http://localhost:3300",
-    openUrl: process.env.FUEL_OPEN_URL || process.env.FUEL_BASE_URL || "http://localhost:3300",
+    openUrl: resolveOpenUrl(process.env.FUEL_OPEN_URL, "fuel", process.env.FUEL_BASE_URL || "http://localhost:3300"),
     tokenEnv: "FUEL_PORTAL_TOKEN",
     sortOrder: 1,
   },
@@ -32,7 +46,7 @@ const SYSTEMS = [
       "Machine & tool lifecycle: MRN request, Head-Office approval, workshop receipt, dispatch to site and return, with photo evidence.",
     icon: "boxes",
     baseUrl: process.env.MAINSTORES_BASE_URL || "http://localhost:1111",
-    openUrl: process.env.MAINSTORES_OPEN_URL || process.env.MAINSTORES_BASE_URL || "http://localhost:1111",
+    openUrl: resolveOpenUrl(process.env.MAINSTORES_OPEN_URL, "stores", process.env.MAINSTORES_BASE_URL || "http://localhost:1111"),
     tokenEnv: "MAINSTORES_PORTAL_TOKEN",
     sortOrder: 2,
   },
@@ -43,7 +57,7 @@ const SYSTEMS = [
       "Materials (MRN/GRN + pricing), workshop job cards with per-job cost cockpit, and the operations approval workflow.",
     icon: "wrench",
     baseUrl: process.env.WORKSHOP_BASE_URL || "http://localhost:5000",
-    openUrl: process.env.WORKSHOP_OPEN_URL || process.env.WORKSHOP_BASE_URL || "http://localhost:5000",
+    openUrl: resolveOpenUrl(process.env.WORKSHOP_OPEN_URL, "workshop", process.env.WORKSHOP_BASE_URL || "http://localhost:5000"),
     tokenEnv: "WORKSHOP_PORTAL_TOKEN",
     sortOrder: 3,
   },
@@ -54,7 +68,7 @@ const SYSTEMS = [
       "Lubricant stock ledger with running balances, per-machine/project consumption, stock-take, requisitions and the battery register.",
     icon: "droplet",
     baseUrl: process.env.OILBOOK_BASE_URL || "http://localhost:3000",
-    openUrl: process.env.OILBOOK_OPEN_URL || process.env.OILBOOK_BASE_URL || "http://localhost:3000",
+    openUrl: resolveOpenUrl(process.env.OILBOOK_OPEN_URL, "oil", process.env.OILBOOK_BASE_URL || "http://localhost:3000"),
     tokenEnv: "OILBOOK_PORTAL_TOKEN",
     sortOrder: 4,
   },
@@ -106,9 +120,14 @@ async function main() {
         sortOrder: sys.sortOrder,
       },
     });
-    console.log(`  ✓ ${sys.key} → ${sys.baseUrl}`);
+    console.log(`  ✓ ${sys.key} → open ${sys.openUrl} (health ${sys.baseUrl})`);
   }
 
+  if (PORTAL_PUBLIC_DOMAIN) {
+    console.log(`Main link: https://${PORTAL_PUBLIC_DOMAIN} — systems open on its sub-domains.`);
+  } else {
+    console.log("PORTAL_PUBLIC_DOMAIN not set — systems open on their *_BASE_URL / localhost fallback.");
+  }
   console.log("Seed complete.");
 }
 

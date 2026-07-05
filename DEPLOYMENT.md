@@ -24,17 +24,32 @@ Config artifacts referenced here live in [`deploy/`](./deploy):
 > Never start a Next app without an explicit `-p` — the Oil Stock Book owns
 > Next's default port 3000.
 
-## 2. Subdomain map
+## 2. Subdomain map — one main link, four subs
 
-Caddy terminates TLS and reverse-proxies each host to its local port:
+The portal is the **one main link**; each system opens on a **sub-domain of the
+portal host**, so the estate reads as a single hierarchy. Caddy terminates TLS
+and reverse-proxies each host to its local port:
 
 | Host | → | Process |
 |---|---|---|
-| `portal.ec-workshops.online` | :4400 | Master Portal |
-| `fuel-portal.ec-workshops.online` | :3300 | Fuel & Billing |
-| `stores.ec-workshops.online` | :1111 | Main Stores |
-| `workshop.ec-workshops.online` | :5000 | Workshop & Stores |
-| `oil.ec-workshops.online` | :3000 | Oil Stock Book |
+| `portal.ec-workshops.online` — **main** | :4400 | Master Portal |
+| `fuel.portal.ec-workshops.online` | :3300 | Fuel & Billing |
+| `stores.portal.ec-workshops.online` | :1111 | Main Stores |
+| `workshop.portal.ec-workshops.online` | :5000 | Workshop & Stores |
+| `oil.portal.ec-workshops.online` | :3000 | Oil Stock Book |
+
+**DNS:** point one wildcard record `*.portal.ec-workshops.online` (plus the apex
+`portal.ec-workshops.online`) at this machine — that single record covers all
+four subs. Or add the four A records individually if you prefer no wildcard.
+
+**TLS:** Caddy provisions a certificate **per host** automatically (Let's
+Encrypt); every host is named explicitly in `deploy/Caddyfile`, so no wildcard
+*certificate* is required.
+
+**One-value config:** set `PORTAL_PUBLIC_DOMAIN=portal.ec-workshops.online` in
+the portal's env and the seed derives every system's browser-facing `openUrl`
+from it — no per-system URLs to maintain. `<SYS>_OPEN_URL` still overrides a
+single system if ever needed.
 
 LAN-only (no public DNS): use the `tls internal` variant in `deploy/Caddyfile`
 and add the names to office DNS or `hosts` files.
@@ -51,7 +66,7 @@ across systems.** Set at least:
 | Main Stores | `MAINSTORES_AUTH_SECRET`, `PORTAL_TOKEN` | `SEED_ADMIN_PASSWORD` / `SEED_HO_PASSWORD` / `SEED_SK_PASSWORD` on first install |
 | Workshop | `PORTAL_TOKEN`, `COOKIE_SECURE=true`, `BUSINESS_TZ=Asia/Colombo` | `SMTP_*` optional; `SEED_ADMIN_PASSWORD` / `SEED_APPROVER_PASSWORD` |
 | Oil Stock Book | `PORTAL_TOKEN` | `SEED_ADMIN_PASSWORD` on first install |
-| Portal | `PORTAL_AUTH_SECRET`, `SEED_PORTAL_ADMIN_PASSWORD`, and per-system `FUEL_PORTAL_TOKEN` / `MAINSTORES_PORTAL_TOKEN` / `WORKSHOP_PORTAL_TOKEN` / `OILBOOK_PORTAL_TOKEN` | plus `*_BASE_URL` / `*_OPEN_URL` — see `.env.example` |
+| Portal | `PORTAL_AUTH_SECRET`, `SEED_PORTAL_ADMIN_PASSWORD`, `PORTAL_PUBLIC_DOMAIN`, and per-system `FUEL_PORTAL_TOKEN` / `MAINSTORES_PORTAL_TOKEN` / `WORKSHOP_PORTAL_TOKEN` / `OILBOOK_PORTAL_TOKEN` | `PORTAL_PUBLIC_DOMAIN` derives every system's sub-domain openUrl; `*_BASE_URL` are localhost health targets; `*_OPEN_URL` optional per-system overrides — see `.env.example` |
 
 **Portal tokens must match:** each system's `PORTAL_TOKEN` equals the value the
 portal holds for it (`<SYSTEM>_PORTAL_TOKEN`). Generate a distinct random token

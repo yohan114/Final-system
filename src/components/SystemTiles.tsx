@@ -41,6 +41,17 @@ const TONE: Record<string, string> = {
   neutral: "text-foreground",
 };
 
+// The host a person's browser reaches this system at, e.g.
+// "fuel.portal.ec-workshops.online". Falls back to the raw string if it isn't a
+// parseable URL (e.g. a bare host).
+function hostOf(openUrl: string): string {
+  try {
+    return new URL(openUrl).host;
+  } catch {
+    return openUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  }
+}
+
 function StatusDot({ state }: { state: TileState | undefined }) {
   if (!state) return <span className="w-2.5 h-2.5 rounded-full bg-gray-500" title="Unknown" />;
   return (
@@ -111,7 +122,7 @@ export default function SystemTiles({
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold">Systems</h1>
-          <p className="text-sm text-muted">Each system keeps its own login. Open one to sign in there.</p>
+          <p className="text-sm text-muted">This portal is the main link; each system opens on its own sub-domain and keeps its own login.</p>
         </div>
         <button
           onClick={refresh}
@@ -133,8 +144,11 @@ export default function SystemTiles({
                 <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center">
                   <Icon className="w-6 h-6 text-accent" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-semibold leading-tight">{sys.name}</div>
+                  <div className="text-[11px] text-muted/80 font-mono truncate mt-0.5" title={sys.openUrl}>
+                    {hostOf(sys.openUrl)}
+                  </div>
                   <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5">
                     <StatusDot state={state} />
                     {state ? (

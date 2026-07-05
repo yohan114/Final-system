@@ -186,22 +186,24 @@ flowchart LR
 - **Profit:** `Profit(site, month) = Income(site, month) − CostBill(site, month)`, and the same per machine — with the split visible: fuel margin (fuel billed vs fuel cost), repair burden, oil burden. **Cost per km / per hour** falls out free wherever S1 meter readings exist for the machine.
 - **Honesty rules:** (a) a repair can appear both as an S3 job card and an S1 service record — the ledger tags provenance, and the P/L never sums both maintenance sources for one machine without the Q2/Q4 boundary declaring which is authoritative; (b) events that can't be attributed to a mapped machine/site land in a visible **"unattributed" bucket**, so the P/L always states its own coverage instead of silently under-counting; (c) all money stays in **LKR cents (integers)**, matching S1's convention.
 
-### 4.5 Routing & addressing — recommended: one subdomain per system
+### 4.5 Routing & addressing — one main link, four subs *(shipped)*
 
 Evidence in the code favors subdomains over path-prefixes, strongly:
 
 - `*.ec-workshops.online` is already provisioned and whitelisted in S1's `serverActions.allowedOrigins`; a reverse proxy already fronts S1 (`fuel-portal.ec-workshops.online`, local :6600).
 - Path-prefix routing on one hostname is **blocked by real collisions**: S1 and S2 both set a cookie literally named `session` at `path=/` (they would log each other out on every sign-in); `/api` is claimed by all four apps; `/uploads` by two; and S4's SPA hardcodes the `/api` prefix, so path-mounting it requires a rebuild.
 
+**Chosen structure — the portal is the one main link, each system a sub-domain *of it*** (so the estate is a single visible hierarchy, not five sibling hosts):
+
 | Address | → | System |
 |---|---|---|
-| `portal.ec-workshops.online` | :4400 | **Master Portal** (this repo) |
-| `fuel-portal.ec-workshops.online` | :3300 | Fuel & Billing *(already live)* |
-| `stores.ec-workshops.online` | :1111 | Main Stores Console |
-| `workshop.ec-workshops.online` | :5000 | Workshop & Stores |
-| `oil.ec-workshops.online` | :3000 | Oil Stock Book |
+| `portal.ec-workshops.online` — **main** | :4400 | **Master Portal** (this repo) |
+| `fuel.portal.ec-workshops.online` | :3300 | Fuel & Billing |
+| `stores.portal.ec-workshops.online` | :1111 | Main Stores Console |
+| `workshop.portal.ec-workshops.online` | :5000 | Workshop & Stores |
+| `oil.portal.ec-workshops.online` | :3000 | Oil Stock Book |
 
-Subdomains also give each system its own cookie scope, which is precisely what "separate logins" needs. (LAN-only fallback if public DNS is not wanted for the other systems: same layout with internal DNS names or `hosts` entries — decision Q5.)
+Configured from **one value** — `PORTAL_PUBLIC_DOMAIN=portal.ec-workshops.online` — from which the portal seed derives every system's `openUrl` as `<sub>.<domain>`; the launcher shows each system's sub-host under its name so the hierarchy is visible. DNS is one wildcard record `*.portal.ec-workshops.online`; Caddy auto-issues a cert per named host (`deploy/Caddyfile`). Subdomains also give each system its own cookie scope, which is precisely what "separate logins" needs. (LAN-only fallback if public DNS is not wanted: same layout with internal DNS names or `hosts` entries — decision Q5.)
 
 ---
 
@@ -290,7 +292,7 @@ Portal `/alerts` (health history → prioritised feed, warning → critical afte
 
 > These were the pre-build decisions. Implementation proceeded on the recommended option for each. They remain the reference for the choices baked into the platform (and Q2–Q4 stay live for M7).
 
-- **Q1 · Routing:** one subdomain per system under `ec-workshops.online` (**recommended** — the cookie/`/api`/`/uploads` collisions block path-routing) — or LAN-internal hostnames with the same shape?
+- **Q1 · Routing:** ✅ *Decided — nested sub-domains.* The portal is the one main link (`portal.ec-workshops.online`) and each system opens on a sub-domain **of it** (`fuel.portal…`, `stores.portal…`, `workshop.portal…`, `oil.portal…`), configured from a single `PORTAL_PUBLIC_DOMAIN` value. (Path-routing on one host stays ruled out by the cookie/`/api`/`/uploads` collisions; LAN-internal hostnames remain the offline fallback — Q5.)
 - **Q2 · Stores boundary:** declare **S2 = machines & tools movements (photo evidence), S3 = consumable materials, GRN pricing & workshop costing** and show both tiles (**recommended**) — or plan a merge (large: S3 holds ~3.6k costed MRN lines; S2 has no tests yet)?
 - **Q3 · Oil Stock Book:** keep as sovereign system of record with its own tile (**recommended**; the "absorbed into Fuel" plan was never implemented) — or fund the actual merge first (defers the portal by weeks)?
 - **Q4 · Canonical battery register:** Oil Stock Book (**recommended** — photos + append-only audit + one-battery-per-vehicle constraint); S3's battery screens become read-only/retired later.

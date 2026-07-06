@@ -1,5 +1,8 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 import { pollAllSystems } from "@/lib/systems";
+import { homeFor } from "@/lib/roles";
 import SystemTiles, { TileSystem, TileState } from "@/components/SystemTiles";
 import { ssoSecretFor } from "@/lib/sso";
 
@@ -9,6 +12,14 @@ import { ssoSecretFor } from "@/lib/sso";
 export const dynamic = "force-dynamic";
 
 export default async function LauncherPage() {
+  // Role-based landing: Site Officers and Storekeepers go straight to their
+  // own dashboards; executives and drivers keep the launcher as home.
+  const session = await getSession();
+  if (session) {
+    const home = homeFor(session.role);
+    if (home !== "/") redirect(home);
+  }
+
   const enabled = await prisma.system.count({ where: { enabled: true } });
 
   let systems: TileSystem[] = [];

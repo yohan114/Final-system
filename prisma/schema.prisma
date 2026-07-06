@@ -18,8 +18,13 @@ model PortalUser {
   username     String     @unique
   name         String
   passwordHash String
-  role         String     // "MASTER_ADMIN" | "DIRECTOR" | "VIEWER"
+  // Master-system roles: "MASTER_ADMIN" | "MANAGER" | "SITE" | "SK" | "DRIVER"
+  // ("DIRECTOR"/"VIEWER" remain valid legacy values, treated as MANAGER/DRIVER).
+  role         String
   active       Boolean    @default(true)
+  // SITE officers are scoped to one canonical site; other roles leave it null.
+  siteId       String?
+  site         SiteMap?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -98,6 +103,7 @@ model SiteMap {
   updatedAt    DateTime       @updatedAt
   entities     SystemEntity[]
   costEvents   CostEvent[]
+  users        PortalUser[]
 }
 
 // The profit engine's ledger (M5). One row per cost/income event pulled from a

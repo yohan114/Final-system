@@ -92,6 +92,14 @@ model MachineMap {
   updatedAt     DateTime       @updatedAt
   entities      SystemEntity[]
   costEvents    CostEvent[]
+  fuelRecords        FuelRecord[]
+  incomeRecords      IncomeRecord[]
+  meterRecords       MeterRecord[]
+  maintenanceRecords MaintenanceRecord[]
+  storeRecords       StoreRecord[]
+  oilRecords         OilRecord[]
+  batteryRecords     BatteryRecord[]
+  snapshots          MachineSnapshot[]
 }
 
 // Canonical site/project, identified by a normalized name.
@@ -187,4 +195,162 @@ model AuditLog {
   createdAt DateTime    @default(now())
 
   @@index([createdAt])
+}
+
+// ── M13-P2 · Merged full history ─────────────────────────────────────────────
+// One row per source event, imported directly from the four systems' databases
+// by scripts/import-history.ts. sourceRef makes every import idempotent; the
+// machineId links records to the canonical machine registry (MachineMap).
+
+model FuelRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "fuel:issue:<id>"
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteRef     String?
+  fuelKind    String?
+  source      String? // STATION | BOWSER
+  litres      Float
+  amountCents Int
+  issuedBy    String?
+  voided      Boolean     @default(false)
+  occurredAt  DateTime
+  month       String
+
+  @@index([month])
+  @@index([machineId, occurredAt])
+}
+
+model IncomeRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "fuel:bill:<id>"
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteRef     String?
+  rentalCents Int         @default(0)
+  fuelCents   Int         @default(0)
+  taxCents    Int         @default(0)
+  totalCents  Int
+  status      String // DRAFT | ISSUED | PAID | OVERDUE
+  invoiceNo   String?
+  occurredAt  DateTime
+  month       String
+
+  @@index([month])
+  @@index([machineId])
+}
+
+model MeterRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "fuel:meter:<id>"
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  value       Float
+  readingType String // KM | HOURS
+  occurredAt  DateTime
+  month       String
+
+  @@index([machineId, occurredAt])
+}
+
+model MaintenanceRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "fuel:service:<id>" | "workshop:job:<id>"
+  systemKey   String
+  kind        String // service | jobcard
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteRef     String?
+  description String?
+  status      String?
+  driverName  String?
+  jobNo       String?
+  partsCents  Int         @default(0)
+  labourCents Int         @default(0)
+  totalCents  Int         @default(0)
+  openedAt    DateTime?
+  closedAt    DateTime?
+  occurredAt  DateTime
+  month       String
+
+  @@index([month])
+  @@index([machineId])
+  @@index([status])
+}
+
+model StoreRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "workshop:receipt:<id>"
+  itemName    String
+  category    String?
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  qty         Float
+  unitCents   Int         @default(0)
+  amountCents Int         @default(0)
+  grnNumber   String?
+  supplier    String?
+  mrnNum      String?
+  occurredAt  DateTime
+  month       String
+
+  @@index([month])
+  @@index([machineId])
+}
+
+model OilRecord {
+  id          String      @id @default(uuid())
+  sourceRef   String      @unique // "oilbook:txn:<id>"
+  product     String
+  kind        String      @default("issue") // issue (consumption) | receive (purchase)
+  qty         Float
+  amountCents Int         @default(0)
+  machineCode String?
+  machineId   String?
+  machine     MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  siteRef     String?
+  occurredAt  DateTime
+  month       String
+
+  @@index([month])
+  @@index([machineId])
+}
+
+model BatteryRecord {
+  id             String      @id @default(uuid())
+  sourceRef      String      @unique // "oilbook:battery:<id>"
+  vehicleNo      String?
+  machineCode    String?
+  machineId      String?
+  machine        MachineMap? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  brand          String?
+  amountCents    Int         @default(0)
+  installedAt    DateTime?
+  warrantyMonths Int?
+  occurredAt     DateTime
+  month          String
+
+  @@index([machineId])
+}
+
+// Live per-system view of each machine: status (working / repair / disposed /
+// at-site …) and the latest meter, refreshed on every import run. This is the
+// backbone of the vehicle status board and lifetime analytics.
+model MachineSnapshot {
+  id         String     @id @default(uuid())
+  machineId  String
+  machine    MachineMap @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  systemKey  String
+  status     String?
+  meterValue Float?
+  meterType  String?
+  siteRef    String?
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([machineId, systemKey])
 }

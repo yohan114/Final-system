@@ -375,9 +375,20 @@ same process until their module is absorbed):
    live stores + workshop KPIs and signed-in SSO links. Verified in a real
    browser (13/13): admin creates both users; each lands on the right
    dashboard with the right nav; a Site Officer is blocked from admin pages.
-2. **P2 · All data in one database** — full-history importers from the four
-   system DBs (fuel issues/bills, job cards, MRN/GRN, oil ledger, batteries,
-   machines, drivers) into the master schema, reusing the E&C-code mapping.
+2. **P2 · All data in one database** ✅ *shipped* — `npm run import:history`
+   reads the four systems' SQLite databases directly (read-only) and merges
+   the complete history into master tables: FuelRecord, IncomeRecord,
+   MeterRecord, MaintenanceRecord (S1 services + S3 job cards, incl. driver
+   names), StoreRecord (GRN lines), OilRecord (issues + purchases),
+   BatteryRecord, and a live MachineSnapshot (status + latest meter per
+   machine per system). Idempotent by sourceRef; machines resolve to the
+   canonical registry by normalized E&C code (real registries may create
+   canonical machines, free-text references only link — never pollute).
+   Wired into `setup-vps.sh` and the go-live guide (re-run any time / cron).
+   Verified: imported 2,091 GRN lines, 1,460 oil transactions, 389 machine
+   snapshots, batteries, fuel + income from the local DBs; re-run produces
+   identical counts (idempotent); and every master total exactly equals its
+   source total (8/8 integrity checks).
 3. **P3 · Executive analytics** — P&L per site/machine/month, investments and
    vehicle lifetime cost, working/repair/parked vehicle board, driver KPIs.
 4. **P4 · Absorb operations module by module** (fuel entry, stores, workshop,

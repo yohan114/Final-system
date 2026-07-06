@@ -204,7 +204,15 @@ pm2 restart ec-unified
 ```
 
 (Workshop and Oil Book migrate their own schema automatically on start.)
-Then open the portal — the tiles should show your real numbers.
+Then merge the real history into the master database and restart:
+
+```bash
+cd /opt/ec/Final-system && npm run import:history
+```
+
+The import is idempotent — re-run it any time (or schedule it hourly via cron)
+to keep the master database current until the operational modules move in.
+Then open the portal — the tiles and dashboards show your real numbers.
 
 ## 7. Backups
 

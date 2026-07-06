@@ -9,7 +9,8 @@
     "start:unified": "NODE_ENV=production node server/unified.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "import:history": "tsx scripts/import-history.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",

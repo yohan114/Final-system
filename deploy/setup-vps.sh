@@ -161,6 +161,9 @@ if [ "$DO_BUILD" = 1 ]; then
   (cd "$PORTAL/apps/oilbook/client" && npm run build)
 fi
 
+say "Merging all systems' history into the master database"
+(cd "$PORTAL" && npm run import:history) || note "history import skipped (re-run later with: npm run import:history)"
+
 if [ "$DO_START" = 1 ]; then
   say "Starting the unified server under PM2"
   command -v pm2 >/dev/null || { note "installing pm2"; npm install -g pm2; }

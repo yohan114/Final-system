@@ -11,10 +11,10 @@ Config artifacts referenced here live in [`deploy/`](./deploy):
 (off-machine backups).
 
 > **Fast path:** on a fresh VPS with git + Node 20+, run
-> `bash deploy/setup-vps.sh` — it clones the five repos, installs, generates
-> all secrets into `Final-system/.env`, prepares the databases, builds, and
-> starts the unified server under PM2. Only DNS and Caddy remain manual
-> (printed at the end). §§1–5 below describe what it automates.
+> `bash deploy/setup-vps.sh` — it clones this one repo, installs, generates
+> all secrets into `.env`, prepares the databases, builds, and starts the
+> unified server under PM2. Only DNS, Caddy, and copying your real data (§6)
+> remain manual. §§1–5 below describe what it automates.
 
 ---
 
@@ -158,7 +158,55 @@ Health checks for a supervisor/uptime probe: `GET /api/health` on every host
 503 when that system's DB is unreachable — e.g.
 `https://fuel.portal.ec-workshops.online/api/health`.
 
-## 6. Backups
+## 6. Moving your real data onto the VPS
+
+Each system's data is a single SQLite file (plus, for two systems, an uploads
+folder). Copy them from wherever the systems run today into the monorepo
+checkout on the VPS — `setup-vps.sh` never overwrites an existing database, so
+you can copy before or after running it.
+
+**Step 1 — stop the old system first.** SQLite keeps recent writes in `-wal`
+side files; copying while the app runs can lose or corrupt data. Stop the app
+(or at least close every open page), then copy the `.db` file **together with
+its `.db-wal` and `.db-shm` files if they exist**.
+
+**Step 2 — copy these files** (source path is inside each old system's folder;
+target is inside `/opt/ec/Final-system` on the VPS):
+
+| System | Copy from (old machine) | Copy to (VPS) |
+|---|---|---|
+| Fuel | `data/app.db` (+ `-wal`/`-shm`) | `apps/fuel/data/` |
+| Main Stores | `dev.db` (+ sidecars) **and** `public/uploads/` if present | `apps/stores/` and `apps/stores/public/uploads/` |
+| Workshop | `inventory.db` (+ sidecars) | `apps/workshop/` |
+| Oil Book | `data/oilbook.db` (+ sidecars) **and** `data/uploads/` (battery photos) | `apps/oilbook/data/` and `apps/oilbook/data/uploads/` |
+
+**How to copy — from a Windows office PC:** install
+[WinSCP](https://winscp.net) (free), connect to the VPS IP with your SSH
+login, and drag the files into the target folders. Or from PowerShell:
+
+```powershell
+scp C:\path\to\Fuel-System-V2\data\app.db* root@YOUR-VPS-IP:/opt/ec/Final-system/apps/fuel/data/
+scp C:\path\to\Main-stros-system\dev.db* root@YOUR-VPS-IP:/opt/ec/Final-system/apps/stores/
+scp -r C:\path\to\Main-stros-system\public\uploads root@YOUR-VPS-IP:/opt/ec/Final-system/apps/stores/public/
+scp C:\path\to\Store-Database\inventory.db* root@YOUR-VPS-IP:/opt/ec/Final-system/apps/workshop/
+scp C:\path\to\oil-stock-book\data\oilbook.db* root@YOUR-VPS-IP:/opt/ec/Final-system/apps/oilbook/data/
+scp -r C:\path\to\oil-stock-book\data\uploads root@YOUR-VPS-IP:/opt/ec/Final-system/apps/oilbook/data/
+```
+
+**From another Linux server:** same paths with `scp`/`rsync` from that machine.
+
+**Step 3 — apply migrations and restart:**
+
+```bash
+cd /opt/ec/Final-system/apps/fuel && npx prisma migrate deploy   # fuel schema up to date
+cd /opt/ec/Final-system/apps/stores && npx prisma db push        # stores schema up to date
+pm2 restart ec-unified
+```
+
+(Workshop and Oil Book migrate their own schema automatically on start.)
+Then open the portal — the tiles should show your real numbers.
+
+## 7. Backups
 
 **Local, per system** (consistent snapshots into each repo's `backups/`):
 
@@ -177,7 +225,7 @@ or rotated disk. Set `EC_ROOT` and `EC_BACKUP_DEST`; retention defaults to 30
 days. **Do a restore drill** — copy a backup back and boot against it — before
 trusting it.
 
-## 7. Alerts
+## 8. Alerts
 
 The portal's **/alerts** page rolls the health-poll history into a prioritised
 feed: a system that fails its latest health check appears as a warning and
@@ -187,7 +235,7 @@ with **no backup** or a backup older than **48 hours** raises a warning, and
 older than **7 days** goes critical — so a silently broken backup job can't
 hide. The alert email digest carries these too.
 
-## 8. First-run checklist
+## 9. First-run checklist
 
 - [ ] Point DNS: `portal.ec-workshops.online` + `*.portal.ec-workshops.online` at the VPS.
 - [ ] In `Final-system/.env`: set `PORTAL_PUBLIC_DOMAIN`, every `*_AUTH_SECRET` /

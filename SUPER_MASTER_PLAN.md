@@ -355,7 +355,34 @@ archived once this merges):
    (5/5 browser checks; legacy array snapshots parse untouched).
 3. **M12 · Depth (separate approvals)** — per-site allowed-vehicle fuel
    lists; portal PWA; battery warranty claims; store cost category once S3
-   issues carry an E&C code. ✅ *Single sign-on shipped:* sign in once at the
+   issues carry an E&C code.
+
+### M13 · ONE SYSTEM — the true merge (decided 2026-07-06)
+
+The owner's direction: stop maintaining four systems — merge everything into
+one master application with one login, one database, role-based dashboards,
+and the business answers up front (income, expenditure, P&L margins,
+investments, vehicle lifetimes, repaired/parked vehicles, driver KPIs). The
+strangler plan (each phase ships alone; the existing apps keep running in the
+same process until their module is absorbed):
+
+1. **P1 · Master system core** ✅ *shipped* — roles ADMIN / MANAGER / SITE /
+   SK / DRIVER on the portal user model (SITE scoped to a canonical site);
+   People & roles admin page (create users, assign roles + sites, disable);
+   role-adaptive navigation and per-role landing: Site Officers land on their
+   own site dashboard (income / spend / profit, category split, machines on
+   site — from the merged cost ledger), Storekeepers on a stores view with
+   live stores + workshop KPIs and signed-in SSO links. Verified in a real
+   browser (13/13): admin creates both users; each lands on the right
+   dashboard with the right nav; a Site Officer is blocked from admin pages.
+2. **P2 · All data in one database** — full-history importers from the four
+   system DBs (fuel issues/bills, job cards, MRN/GRN, oil ledger, batteries,
+   machines, drivers) into the master schema, reusing the E&C-code mapping.
+3. **P3 · Executive analytics** — P&L per site/machine/month, investments and
+   vehicle lifetime cost, working/repair/parked vehicle board, driver KPIs.
+4. **P4 · Absorb operations module by module** (fuel entry, stores, workshop,
+   oil book) until staff work fully inside the master system and the old
+   apps retire. ✅ *Single sign-on shipped:* sign in once at the
    portal and "Open system" arrives already signed in. The portal's
    `/launch/<key>` mints a 60-second single-use HMAC token (per-system
    `<SYS>_SSO_SECRET`, both sides read the same variable in unified mode);
